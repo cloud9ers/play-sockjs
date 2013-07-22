@@ -36,3 +36,7 @@ samples/play-sockjs-sample/.cache
 samples/play-sockjs-sample/.target
 samples/play-sockjs-sample/bin
 
+#eclipse files
+.classpath
+.project
+
