@@ -10,14 +10,16 @@ import play.api.Play
 
 class SockJsPlugin(app: Application) extends Plugin {
 
-  lazy val logger = Logger("sockJs.plugin")
-  
   override def onStart() {
-    logger.info("Starting SockJs Plugin.")
+	val sockjsConfig = app.configuration.getConfig("sockjs")
+	sockjsConfig.get.getInt("responseLimit").getOrElse(10)
+	// or
+	app.configuration.getInt("sockjs.responseLimit").getOrElse(10)
+    Logger.info("Starting SockJs Plugin.")
   }
 
   override def onStop() {
-    logger.info("Stopping SockJS Plugin.")
+    Logger.info("Stopping SockJS Plugin.")
   }
 
 }
