@@ -5,6 +5,6 @@ import com.cloud9ers.play2.sockjs.SockJs
 
 object SockJsService extends Controller with SockJs {
 
-  def sockJs(route: String) = sockJsHandler(route)
+  def sockJs(route: String) = sockJsHandler
 
 }

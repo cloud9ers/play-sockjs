@@ -14,7 +14,7 @@ import play.api.mvc.RequestHeader
 import play.api.mvc.AnyContent
 
 class SockJsPlugin(app: Application) extends Plugin {
-  //  lazy val baseUrl = app.configuration.getString("sockjs.baseUrl").getOrElse("/")
+  lazy val baseUrl = app.configuration.getString("sockjs.baseUrl").getOrElse("/")
 
   override def enabled = app.configuration.getBoolean("play.sockjs.enabled").getOrElse(true)
 
@@ -34,16 +34,15 @@ class SockJsPlugin(app: Application) extends Plugin {
 
 trait SockJs {
   self: Controller =>
-  //  lazy val baseUrl = current.plugin[SockJsPlugin].map(_.baseUrl)
+  lazy val baseUrl = current.plugin[SockJsPlugin].map(_.baseUrl).getOrElse("")
   def info = Action { Ok("hi") }
   def ws = WebSocket
 
-  val infoRoute = "info/?".r
-  val websocketRout = "([0-9]+)/([a-z]+)/?".r
+  val infoRoute = s"^/$baseUrl/info/?".r
+  val websocketRout = s"^/$baseUrl/([0-9]+)/([a-z]+)/?".r
 
-  def sockJsHandler(route: String) = Action {
-    println(route)
-    route match {
+  def sockJsHandler = Action { request =>
+    request.path match {
       case infoRoute() => Ok("info")
       case websocketRout(x, y) => Ok(s"websocket($x, $y)")
       case _ => NotFound("Notfound")
