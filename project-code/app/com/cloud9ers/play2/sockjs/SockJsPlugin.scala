@@ -31,18 +31,26 @@ class SockJsPlugin(app: Application) extends Plugin {
   }
 
 }
-
+/**
+ *
+ * 1- "" or "/"  ===============> show welcome page 02:47:07 PM
+ * 2- "/info"  =========================> call InfoHandler to return channel info 02:49:41 PM
+ * 3-"/iframe" = = =================> call IframeHandler 02:50:11 PM
+ * 4-"/websockets"  ========================> call websocketHandler 02:50:55 PM
+ */
 trait SockJs {
   self: Controller =>
-  lazy val baseUrl = current.plugin[SockJsPlugin].map(_.baseUrl).getOrElse("")
+  lazy val prefix = current.plugin[SockJsPlugin].map(_.baseUrl).getOrElse("")
   def info = Action { Ok("hi") }
   def ws = WebSocket
 
-  val infoRoute = s"^/$baseUrl/info/?".r
-  val websocketRout = s"^/$baseUrl/([0-9]+)/([a-z]+)/?".r
+  val greatingRoute = s"^/$prefix/echo/?".r
+  val infoRoute = s"^/$prefix/info/?".r
+  val websocketRout = s"^/$prefix/([0-9]+)/([a-z]+)/?".r
 
   def sockJsHandler = Action { request =>
     request.path match {
+      case greatingRoute() => Ok("Welcome to SockJS!\n").withHeaders(CONTENT_TYPE -> "text/plain;charset=UTF-8")
       case infoRoute() => Ok("info")
       case websocketRout(x, y) => Ok(s"websocket($x, $y)")
       case _ => NotFound("Notfound")
