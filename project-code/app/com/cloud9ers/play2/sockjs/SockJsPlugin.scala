@@ -12,17 +12,18 @@ import play.api.mvc.WebSocket
 import play.api.Play.current
 import play.api.mvc.RequestHeader
 import play.api.mvc.AnyContent
+import play.api.libs.json.Json
 
 class SockJsPlugin(app: Application) extends Plugin {
-  lazy val baseUrl = app.configuration.getString("sockjs.baseUrl").getOrElse("/")
+  lazy val prefix = app.configuration.getString("sockjs.prefix").getOrElse("/")
 
   override def enabled = app.configuration.getBoolean("play.sockjs.enabled").getOrElse(true)
 
   override def onStart() {
-    val sockjsConfig = app.configuration.getConfig("sockjs")
-    sockjsConfig.get.getInt("responseLimit").getOrElse(10)
-    // or
-    app.configuration.getInt("sockjs.responseLimit").getOrElse(10)
+    //    val sockjsConfig = app.configuration.getConfig("sockjs")
+    //    sockjsConfig.get.getInt("responseLimit").getOrElse(10)
+    //    // or
+    //    app.configuration.getInt("sockjs.responseLimit").getOrElse(10)
     Logger.info("Starting SockJs Plugin.")
   }
 
@@ -31,21 +32,36 @@ class SockJsPlugin(app: Application) extends Plugin {
   }
 
 }
-
+/**
+ *
+ * 1- "" or "/"  ===============> show welcome page 02:47:07 PM
+ * 2- "/info"  =========================> call InfoHandler to return channel info 02:49:41 PM
+ * 3-"/iframe" = = =================> call IframeHandler 02:50:11 PM
+ * 4-"/websockets"  ========================> call websocketHandler 02:50:55 PM
+ */
 trait SockJs {
   self: Controller =>
-  lazy val baseUrl = current.plugin[SockJsPlugin].map(_.baseUrl).getOrElse("")
+  lazy val prefix = current.plugin[SockJsPlugin].map(_.prefix).getOrElse("")
   def info = Action { Ok("hi") }
   def ws = WebSocket
 
-  val infoRoute = s"^/$baseUrl/info/?".r
-  val websocketRout = s"^/$baseUrl/([0-9]+)/([a-z]+)/?".r
+  val greatingRoute = s"^/$prefix/?".r
+  val infoRoute = s"^/$prefix/info/?".r
+  val websocketRout = s"^/$prefix/([0-9]+)/([a-z]+)/?".r
 
   def sockJsHandler = Action { request =>
     request.path match {
-      case infoRoute() => Ok("info")
-      case websocketRout(x, y) => Ok(s"websocket($x, $y)")
-      case _ => NotFound("Notfound")
+      case greatingRoute() =>
+        Ok("Welcome to SockJS!\n").withHeaders(CONTENT_TYPE -> "text/plain;charset=UTF-8")
+
+      case infoRoute() =>
+        Ok("info")
+
+      case websocketRout(x, y) =>
+        Ok(s"websocket($x, $y)")
+
+      case _ =>
+        NotFound("Notfound")
     }
   }
 }
