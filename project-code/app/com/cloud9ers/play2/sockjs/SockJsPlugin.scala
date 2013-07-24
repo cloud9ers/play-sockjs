@@ -15,14 +15,12 @@ import play.api.mvc.AnyContent
 
 class SockJsPlugin(app: Application) extends Plugin {
   lazy val baseUrl = app.configuration.getString("sockjs.baseUrl").getOrElse("/")
+  lazy val client_url = app.configuration.getString("sockjs.client_url")
+    .getOrElse("http://cdn.sockjs.org/sockjs-0.3.4.min.js")
 
   override def enabled = app.configuration.getBoolean("play.sockjs.enabled").getOrElse(true)
 
   override def onStart() {
-    val sockjsConfig = app.configuration.getConfig("sockjs")
-    sockjsConfig.get.getInt("responseLimit").getOrElse(10)
-    // or
-    app.configuration.getInt("sockjs.responseLimit").getOrElse(10)
     Logger.info("Starting SockJs Plugin.")
   }
 
@@ -34,17 +32,20 @@ class SockJsPlugin(app: Application) extends Plugin {
 
 trait SockJs {
   self: Controller =>
-  lazy val baseUrl = current.plugin[SockJsPlugin].map(_.baseUrl).getOrElse("")
-  def info = Action { Ok("hi") }
-  def ws = WebSocket
-
+  lazy val baseUrl = current.plugin[SockJsPlugin].map(_.baseUrl)
+  
   val infoRoute = s"^/$baseUrl/info/?".r
   val websocketRout = s"^/$baseUrl/([0-9]+)/([a-z]+)/?".r
+  val iframe_url = s"^/$baseUrl/iframe[0-9-.a-z_]*.html(\\?t=[0-9-.a-z_]*)?".r
+  
+  lazy val iframePage = new IframePage(current.plugin[SockJsPlugin].map(_.client_url).getOrElse(""))
 
   def sockJsHandler = Action { request =>
     request.path match {
       case infoRoute() => Ok("info")
       case websocketRout(x, y) => Ok(s"websocket($x, $y)")
+      case iframe_url(_) => Ok("iframe")
+
       case _ => NotFound("Notfound")
     }
   }
