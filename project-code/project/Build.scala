@@ -17,6 +17,7 @@ object ApplicationBuild extends Build {
 
 
   val main = play.Project(appName, appVersion, appDependencies).settings(
+    scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature")
   )
 
 }

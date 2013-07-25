@@ -39,4 +39,5 @@ samples/play-sockjs-sample/bin
 #eclipse files
 .classpath
 .project
+.worksheet
 
