@@ -13,10 +13,15 @@ import play.api.Play.current
 import play.api.mvc.RequestHeader
 import play.api.mvc.AnyContent
 import play.api.libs.json.Json
+import play.api.mvc.ResponseHeader
+import play.api.libs.iteratee.Enumerator
+import play.api.mvc.SimpleResult
+import java.text.SimpleDateFormat
+import java.util.Date
 
 class SockJsPlugin(app: Application) extends Plugin {
   lazy val prefix = app.configuration.getString("sockjs.prefix").getOrElse("/")
-  lazy val client_url = app.configuration.getString("sockjs.client_url")
+  lazy val clientUrl = app.configuration.getString("sockjs.clientUrl")
     .getOrElse("http://cdn.sockjs.org/sockjs-0.3.4.min.js")
 
   override def enabled = app.configuration.getBoolean("play.sockjs.enabled").getOrElse(true)
@@ -40,18 +45,28 @@ class SockJsPlugin(app: Application) extends Plugin {
 trait SockJs {
   self: Controller =>
   lazy val prefix = current.plugin[SockJsPlugin].map(_.prefix).getOrElse("")
-  
+
   val greatingRoute = s"^/$prefix/?".r
   val infoRoute = s"^/$prefix/info/?".r
-  val iframe_url = s"^/$prefix/iframe[0-9-.a-z_]*.html(\\?t=[0-9-.a-z_]*)?".r
-  
-  lazy val iframePage = new IframePage(current.plugin[SockJsPlugin].map(_.client_url).getOrElse(""))
+  val iframeUrl = s"^/$prefix/iframe[0-9-.a-z_]*.html(\\?t=[0-9-.a-z_]*)?".r
+
+  lazy val iframePage = new IframePage(current.plugin[SockJsPlugin].map(_.clientUrl).getOrElse(""))
 
   def sockJsHandler = Action { request =>
     request.path match {
       case greatingRoute() =>
         Ok("Welcome to SockJS!\n").withHeaders(CONTENT_TYPE -> "text/plain;charset=UTF-8")
-      case iframe_url(_) => Ok("iframe")
+      case iframeUrl(_) =>
+        if (request.headers.toMap.contains(IF_NONE_MATCH)) {
+          NotModified
+        } else {
+          Ok(iframePage.content).withHeaders(
+              CONTENT_TYPE  -> "text/html; charset=UTF-8",
+              CACHE_CONTROL -> "max-age=31536000, public",
+              ETAG          -> iframePage.getEtag,
+              EXPIRES       -> new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz")
+                .format(new Date(System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000))))
+        }
       case infoRoute() =>
         Ok("info")
 
