@@ -35,13 +35,7 @@ class SockJsPlugin(app: Application) extends Plugin {
   }
 
 }
-/**
- *
- * 1- "" or "/"  ===============> show welcome page 02:47:07 PM
- * 2- "/info"  =========================> call InfoHandler to return channel info 02:49:41 PM
- * 3-"/iframe" = = =================> call IframeHandler 02:50:11 PM
- * 4-"/websockets"  ========================> call websocketHandler 02:50:55 PM
- */
+
 trait SockJs { self: Controller =>
   def randomNumber() = 2L << 30 + Random.nextInt
   lazy val prefix = current.plugin[SockJsPlugin].map(_.prefix).getOrElse("")
@@ -50,6 +44,7 @@ trait SockJs { self: Controller =>
   val infoRoute = s"^/$prefix/info/?".r
   val infoDisabledWebsocketRoute = s"^/disabled_websocket_$prefix/info".r
   val iframeUrl = s"^/$prefix/iframe[0-9-.a-z_]*.html(\\?t=[0-9-.a-z_]*)?".r
+  val sessionUrl = s"^/$prefix/[0-9]*/[a-zA-Z0-9]*/[a-zA-Z]*/?".r
 
 
   lazy val iframePage = new IframePage(current.plugin[SockJsPlugin].map(_.clientUrl).getOrElse(""))
@@ -60,7 +55,22 @@ trait SockJs { self: Controller =>
     .union(
       (for (acrh <- req.headers.get(ACCESS_CONTROL_REQUEST_HEADERS))
         yield (ACCESS_CONTROL_ALLOW_HEADERS -> acrh)).toSeq)
-
+        
+  def handleSession(implicit request: Request[AnyContent]) = {
+    Ok("SessionHandler")
+  }
+  
+  def handleIframe(implicit request: Request[AnyContent]) = {
+    if (request.headers.toMap.contains(IF_NONE_MATCH)) {
+          NotModified
+        } else {
+          Ok(iframePage.content).withHeaders(
+              CONTENT_TYPE  -> "text/html; charset=UTF-8", CACHE_CONTROL -> "max-age=31536000, public", 
+              ETAG          -> iframePage.getEtag, 
+              EXPIRES       -> (new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz"))
+              .format(new Date(System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000))))
+        }
+  }
   def info(websocket: Boolean = true)(implicit request: Request[AnyContent]) = request.method match {
     case "GET" =>
       Ok(Json.obj(
@@ -89,19 +99,10 @@ trait SockJs { self: Controller =>
   def sockJsHandler = Action { implicit request =>
     request.path match {
       case greatingRoute() => Ok("Welcome to SockJS!\n").withHeaders(CONTENT_TYPE -> "text/plain;charset=UTF-8")
-      case iframeUrl(_) =>
-        if (request.headers.toMap.contains(IF_NONE_MATCH)) {
-          NotModified
-        } else {
-          Ok(iframePage.content).withHeaders(
-              CONTENT_TYPE  -> "text/html; charset=UTF-8",
-              CACHE_CONTROL -> "max-age=31536000, public",
-              ETAG          -> iframePage.getEtag,
-              EXPIRES       -> new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz")
-                .format(new Date(System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000))))
-        }
+      case iframeUrl(_) => handleIframe
     case infoRoute() => info()
     case infoDisabledWebsocketRoute() => info(websocket = false)
+    case sessionUrl() => handleSession
     case _ => NotFound("Notfound")
 
     }
