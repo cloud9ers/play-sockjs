@@ -18,6 +18,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import play.api.mvc.Result
 import java.util.Date
+import com.cloud9ers.play2.sockjs.transports.Transport
+import com.cloud9ers.play2.sockjs.transports.WebSocketTransport
 
 class SockJsPlugin(app: Application) extends Plugin {
   lazy val prefix = app.configuration.getString("sockjs.prefix").getOrElse("/")
@@ -44,7 +46,7 @@ trait SockJs { self: Controller =>
   val infoRoute = s"^/$prefix/info/?".r
   val infoDisabledWebsocketRoute = s"^/disabled_websocket_$prefix/info".r
   val iframeUrl = s"^/$prefix/iframe[0-9-.a-z_]*.html(\\?t=[0-9-.a-z_]*)?".r
-  val sessionUrl = s"^/$prefix/[0-9]*/[a-zA-Z0-9]*/[a-zA-Z]*/?".r
+  val sessionUrl = s"^/$prefix/[^.]+/[^.]+/[^.]+".r
 
 
   lazy val iframePage = new IframePage(current.plugin[SockJsPlugin].map(_.clientUrl).getOrElse(""))
@@ -57,7 +59,13 @@ trait SockJs { self: Controller =>
         yield (ACCESS_CONTROL_ALLOW_HEADERS -> acrh)).toSeq)
         
   def handleSession(implicit request: Request[AnyContent]) = {
-    Ok("SessionHandler")
+    val pathList = request.path.split("/").reverse
+    val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
+    transport match {
+      case Transport.WEBSOCKET => new WebSocketTransport(request.path)
+      case _  => Ok("o\n")
+      
+    }
   }
   
   def handleIframe(implicit request: Request[AnyContent]) = {
