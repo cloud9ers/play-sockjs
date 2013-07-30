@@ -20,6 +20,7 @@ import play.api.mvc.Result
 import java.util.Date
 import com.cloud9ers.play2.sockjs.transports.Transport
 import com.cloud9ers.play2.sockjs.transports.WebSocketTransport
+import com.cloud9ers.play2.sockjs.transports.XhrTransport
 
 class SockJsPlugin(app: Application) extends Plugin {
   lazy val prefix = app.configuration.getString("sockjs.prefix").getOrElse("/")
@@ -62,7 +63,7 @@ trait SockJs { self: Controller =>
     val pathList = request.path.split("/").reverse
     val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
     transport match {
-      case Transport.WEBSOCKET => new WebSocketTransport(request.path)
+      case Transport.XHR => new XhrTransport
       case _  => Ok("o\n")
       
     }
