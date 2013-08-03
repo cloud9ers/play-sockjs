@@ -5,6 +5,7 @@
 # Home page
 GET     /                           controllers.Application.index
 GET		/echo/$route<.*> 		    controllers.SockJsService.sockJs(route)
+POST    /echo/$route<.*> 		    controllers.SockJsService2.sockJsHandler2(route)
 POST    /echo/$route<.*> 		    controllers.SockJsService.sockJs(route)
 GET		/echo			 		    controllers.SockJsService.sockJs2
 OPTIONS /echo/info					controllers.SockJsService.sockJs2
