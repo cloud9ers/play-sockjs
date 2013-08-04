@@ -21,6 +21,8 @@ import java.util.Date
 import com.cloud9ers.play2.sockjs.transports.Transport
 import com.cloud9ers.play2.sockjs.transports.WebSocketTransport
 import com.cloud9ers.play2.sockjs.transports.XhrTransport
+import com.cloud9ers.play2.sockjs.transports.XhrTransport
+import scala.collection.mutable.{Map => MutableMap}
 
 class SockJsPlugin(app: Application) extends Plugin {
   lazy val prefix = app.configuration.getString("sockjs.prefix").getOrElse("/")
@@ -48,6 +50,7 @@ trait SockJs { self: Controller =>
   val infoDisabledWebsocketRoute = s"^/disabled_websocket_$prefix/info".r
   val iframeUrl = s"^/$prefix/iframe[0-9-.a-z_]*.html(\\?t=[0-9-.a-z_]*)?".r
   val sessionUrl = s"^/$prefix/[^.]+/[^.]+/[^.]+".r
+  val sessions: MutableMap[String, Session] = MutableMap()
 
 
   lazy val iframePage = new IframePage(current.plugin[SockJsPlugin].map(_.clientUrl).getOrElse(""))
@@ -63,7 +66,7 @@ trait SockJs { self: Controller =>
     val pathList = request.path.split("/").reverse
     val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
     transport match {
-      case Transport.XHR => new XhrTransport
+      case Transport.XHR => new XhrTransport().handleRequest(sessionId)(sessions)
       case _  => Ok("o\n")
       
     }
