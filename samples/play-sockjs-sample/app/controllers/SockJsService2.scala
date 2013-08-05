@@ -4,8 +4,7 @@ import play.api.mvc.Controller
 import com.cloud9ers.play2.sockjs.SockJs
 import play.api.libs.iteratee.Concurrent
 import play.api.libs.iteratee.Iteratee
-import play.api.libs.concurrent.Promise
-import scala.concurrent.Future
+import scala.concurrent.{ Future, Promise }
 import play.api.libs.iteratee.Enumerator
 import play.api.mvc.RequestHeader
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -23,7 +22,7 @@ object SockJsService2 extends Controller {
    * userHandler (user of the plugin) -> downEnumerator -> downIteratee -> sockjsClient (browser)
    * sockjsClient -> upEnumerator -> upIteratee -> userHandler
    */
-  
+
   /**
    * The sockJs Handler that the user of the plugin will write to handle the service logic
    * It has the same interface of the websocket
@@ -32,9 +31,10 @@ object SockJsService2 extends Controller {
    * Enumerator - to enumerate the msgs that will be sent to the sockjs client
    */
   def sockJsHandler = async { rh =>
+    import play.api.libs.concurrent.Promise
     val (downEnumerator, downChannel) = Concurrent.broadcast[String]
     val upIteratee = Iteratee.foreach[String] { msg => downChannel push msg }
-    Promise.pure(upIteratee, downEnumerator)
+    play.api.libs.concurrent.Promise.pure(upIteratee, downEnumerator)
   }
 
   /**
@@ -109,7 +109,7 @@ object SockJsService2 extends Controller {
           f(request)(upEnumerator, downIteratee)
           //request.body.asText.map { m => println(m); (upChannel push m.asInstanceOf[A]) }
           //FIXME map doesn't happen, the body is not text/plain, 7asbia Allah w ne3ma el wakel :@
-          upChannel push "a[\"x\"]\n".asInstanceOf[A]
+          upChannel push "x".asInstanceOf[A]
           NoContent
             .withHeaders(
               CONTENT_TYPE -> "text/plain;charset=UTF-8",
@@ -125,32 +125,49 @@ object SockJsService2 extends Controller {
       //      }
     }
   }
-  trait Event
-  case class Msg(msg: String) extends Event
-  case class ReadyToWrite(p: scala.concurrent.Promise[String]) extends Event
 
   /**
    * Session class to queue messages over multiple connection like xhr and xhr_send
    */
   class Session(sessionId: String) {
+    trait Event
+    case class Msg(msg: String) extends Event
+    case class ReadyToWrite(p: scala.concurrent.Promise[String]) extends Event
+    /**
+     * Structure to keep track of iteration state
+     * @param ms - list of queued messages waiting to be sent to the sockjs client
+     * @param writablePromise - promise will be used to send data on it's onsuccess callback
+     */
+    case class Accumulator(ms: List[String], writablePromise: Option[Promise[String]])
     // for queuing the messages to be flushed when the downstream connection is ready 
     private[this] val (msgEnumerator, msgChannel) = Concurrent.broadcast[Event]
+
+    def encodeMsgs(ms: Seq[String]): String = ms.reduceLeft(_ + _) //TODO write the sockjs encoding function
     // iterate over the msgEnumertor and keep the context/state of the msg queue
-    def msgIteratee: Iteratee[Event, String] = {
-      def step(m: Event, ms: String)(i: Input[Event]): Iteratee[Event, String] = i match {
-        case Input.EOF | Input.Empty => Done(ms, Input.EOF)
+    def msgIteratee: Iteratee[Event, Accumulator] = {
+      def step(m: Event, acc: Accumulator)(implicit i: Input[Event]): Iteratee[Event, Accumulator] = i match {
+        case Input.EOF | Input.Empty => Done(acc, Input.EOF)
         case Input.El(e) => e match {
           // send the msg to the next step or flush if the downstream connection is ready
           case Msg(msg) =>
             println(msg)
-            Cont(i => step(Msg(msg), ms + msg)(i)) //TODO passes a well formed json array instead of just concat
+            acc.writablePromise match {
+              case Some(p) => sendFrame(acc.ms :+ msg, p) //TODO test for: check if the down channel is ready and a new msg received
+              case None => Cont(i => step(Msg(msg), Accumulator(acc.ms :+ msg, None))(i)) //TODO optimize append to the right
+            }
           // takes a promise and fulfill that promise if the msg queue has items or send ready state to the next step otherwise
-          case ReadyToWrite(p) => //TODO check if the ms is not empty and send the p to next step
-            p success ms
-            Cont(i => step(Msg(""), "")(i))
+          case ReadyToWrite(p) => //TODO test for: check if the ms is not empty and send the p to next step
+            acc.ms match {
+              case Nil => Cont(i => step(Msg(""), acc)(i))
+              case ms => sendFrame(ms, p)
+            }
         }
       }
-      Cont(i => step(Msg(""), "")(i))
+      def sendFrame(ms: List[String], p: Promise[String])(implicit i: Input[Event]): Iteratee[Event, Accumulator] = {
+        p success encodeMsgs(ms.filterNot(_ == ""))
+        Cont(i => step(Msg(""), Accumulator(Nil, None))(i))
+      }
+      Cont(i => step(Msg(""), Accumulator(Nil, None))(i))
     }
     // run the msgIteratee over the msgEnumerator
     msgEnumerator run msgIteratee
