@@ -7,6 +7,7 @@ object Transport {
   val JSON_P       = "jsonp"
   val XHR          = "xhr"
   val XHR_SEND     = "xhr_send"
+  val XHR_STREAMING = "xhr_streaming"
   val JSON_P_SEND  = "jsonp_send"
 }
 class Transport {
