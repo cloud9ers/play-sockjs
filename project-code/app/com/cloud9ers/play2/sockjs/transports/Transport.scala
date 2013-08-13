@@ -1,5 +1,8 @@
 package com.cloud9ers.play2.sockjs.transports
 
+import com.cloud9ers.play2.sockjs.SockJs
+import play.api.mvc.Controller
+
 object Transport {
   val WEBSOCKET    = "websocket"
   val EVENT_SOURCE = "eventsource"
@@ -14,7 +17,7 @@ object Transport {
   val CONTENT_TYPE_PLAIN = "text/plain; charset=UTF-8"
   val CONTENT_TYPE_HTML = "text/html; charset=UTF-8"
 }
-class Transport {
+class Transport extends Controller with SockJs{
   /*
    * Implements few methods that session expects to see in each transport
    */

@@ -7,7 +7,7 @@ import scala.concurrent.Future
 import java.util.Date
 import scala.util.Random
 import play.api.libs.iteratee.{ Concurrent, Enumerator, Iteratee }
-import play.api.mvc.{ Action, Controller, Request, RequestHeader, AnyContent }
+import play.api.mvc.{ Action, Controller, Request, RequestHeader, AnyContent, Result }
 import play.api.libs.json.Json
 import play.api.libs.json.Json.toJsFieldJsValueWrapper
 import play.api.Play.current
@@ -15,12 +15,14 @@ import akka.pattern.ask
 import scala.concurrent.duration._
 import akka.util.Timeout
 import akka.actor.ActorRef
+import com.cloud9ers.play2.sockjs.transports.XhrTransport
 
 trait SockJs { self: Controller =>
   def randomNumber() = 2L << 30 + Random.nextInt
   lazy val prefix = SockJsPlugin.current.prefix
   lazy val maxLength: Int = SockJsPlugin.current.maxLength
   lazy val sessionManager = SockJsPlugin.current.sessionManager
+  val x:scala.concurrent.duration.FiniteDuration = 1.seconds
   implicit val timeout = Timeout(5.seconds)
 
   val greatingRoute = s"^/$prefix/?".r
@@ -38,62 +40,13 @@ trait SockJs { self: Controller =>
       (for (acrh <- req.headers.get(ACCESS_CONTROL_REQUEST_HEADERS))
         yield (ACCESS_CONTROL_ALLOW_HEADERS -> acrh)).toSeq)
 
-  val H_BLOCK = ((for (i <- 0 to 2047) yield "h").toArray :+ "\n").reduceLeft(_ + _).toArray.map(_.toByte)
-  def handleSession[A](f: RequestHeader => (Enumerator[A], Iteratee[A, Unit]) => Unit)(implicit request: Request[AnyContent]) = {
+  def handleSession[A](f: RequestHeader => (Enumerator[A], Iteratee[A, Unit]) => Unit)(implicit request: Request[AnyContent]): Result = {
     val pathList = request.path.split("/").reverse
     val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
     transport match {
-      case Transport.XHR =>
-        Async(
-          (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
-            .flatMap(ses => (ses.asInstanceOf[ActorRef] ? Session.Dequeue)
-              .map(m =>
-                Ok(m.toString)
-                  .withHeaders(
-                    CONTENT_TYPE -> "application/javascript;charset=UTF-8",
-                    CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-                  .withHeaders(cors: _*))))
-
-      case Transport.XHR_STREAMING =>
-        val (enum, channel) = Concurrent.broadcast[Array[Byte]]
-        val result = Ok stream enum
-        Future {
-          Thread sleep 100
-          channel push H_BLOCK
-          def write: Unit =
-            (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
-              .map(ses => (ses.asInstanceOf[ActorRef] ? Session.Dequeue)
-                .map { m => channel push m.toString.toArray.map(_.toByte); write })
-          write
-        }
-        result
-          .withHeaders(
-            CONTENT_TYPE -> "application/javascript;charset=UTF-8",
-            CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-          .withHeaders(cors: _*)
-
-      case Transport.XHR_SEND =>
-        val (upEnumerator, upChannel) = Concurrent.broadcast[A]
-        val downIteratee = Iteratee.foreach[A] { userMsg =>
-          (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
-            .map {
-              case ses: ActorRef => ses ! Session.Enqueue(userMsg.asInstanceOf[String])
-            }
-        }
-        // calls the user function and passes the sockjs Enumerator/Iteratee
-        f(request)(upEnumerator, downIteratee)
-        val contentType = request.headers.get(CONTENT_TYPE).getOrElse(Transport.CONTENT_TYPE_PLAIN)
-        contentType match {
-          case Transport.CONTENT_TYPE_PLAIN =>
-            val body = new String(new String(request.body.asRaw.get.asBytes(maxLength).get, request.charset.getOrElse("utf-8")))
-            upChannel push body.asInstanceOf[A]
-            NoContent
-              .withHeaders(
-                CONTENT_TYPE -> contentType,
-                CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-              .withHeaders(cors: _*)
-          case _ => ???
-        }
+      case Transport.XHR 			⇒ XhrTransport.xhrPolling(sessionId)
+      case Transport.XHR_STREAMING	⇒ XhrTransport.xhrStreaming(sessionId)
+      case Transport.XHR_SEND		⇒ XhrTransport.xhrSend(sessionId, f)
     }
   }
 
