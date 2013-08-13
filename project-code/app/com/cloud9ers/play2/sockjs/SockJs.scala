@@ -7,7 +7,7 @@ import scala.concurrent.Future
 import java.util.Date
 import scala.util.Random
 import play.api.libs.iteratee.{ Concurrent, Enumerator, Iteratee }
-import play.api.mvc.{ Action, Controller, Request, RequestHeader, AnyContent }
+import play.api.mvc.{ Action, Controller, Request, RequestHeader, AnyContent, Result }
 import play.api.libs.json.Json
 import play.api.libs.json.Json.toJsFieldJsValueWrapper
 import play.api.Play.current
@@ -15,6 +15,7 @@ import akka.pattern.ask
 import scala.concurrent.duration._
 import akka.util.Timeout
 import akka.actor.ActorRef
+import com.cloud9ers.play2.sockjs.transports.XhrTransport
 
 trait SockJs { self: Controller =>
   def randomNumber() = 2L << 30 + Random.nextInt
@@ -30,108 +31,6 @@ trait SockJs { self: Controller =>
   val sessionUrl = s"^/$prefix/[^.]+/[^.]+/[^.]+".r
 
   lazy val iframePage = new IframePage(current.plugin[SockJsPlugin].map(_.clientUrl).getOrElse(""))
-
-  def cors(implicit req: Request[AnyContent]) = Seq(
-    ACCESS_CONTROL_ALLOW_CREDENTIALS -> "true",
-    ACCESS_CONTROL_ALLOW_ORIGIN -> req.headers.get("origin").map(o => if (o != "null") o else "*").getOrElse("*"))
-    .union(
-      (for (acrh <- req.headers.get(ACCESS_CONTROL_REQUEST_HEADERS))
-        yield (ACCESS_CONTROL_ALLOW_HEADERS -> acrh)).toSeq)
-
-  val H_BLOCK = ((for (i <- 0 to 2047) yield "h").toArray :+ "\n").reduceLeft(_ + _).toArray.map(_.toByte)
-  def handleSession[A](f: RequestHeader => (Enumerator[A], Iteratee[A, Unit]) => Unit)(implicit request: Request[AnyContent]) = {
-    val pathList = request.path.split("/").reverse
-    val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
-    transport match {
-      case Transport.XHR =>
-        Async(
-          (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
-            .flatMap(ses => (ses.asInstanceOf[ActorRef] ? Session.Dequeue)
-              .map(m =>
-                Ok(m.toString)
-                  .withHeaders(
-                    CONTENT_TYPE -> "application/javascript;charset=UTF-8",
-                    CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-                  .withHeaders(cors: _*))))
-
-      case Transport.XHR_STREAMING =>
-        val (enum, channel) = Concurrent.broadcast[Array[Byte]]
-        val result = Ok stream enum
-        Future {
-          Thread sleep 100
-          channel push H_BLOCK
-          def write: Unit =
-            (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
-              .map(ses => (ses.asInstanceOf[ActorRef] ? Session.Dequeue)
-                .map { m => channel push m.toString.toArray.map(_.toByte); write })
-          write
-        }
-        result
-          .withHeaders(
-            CONTENT_TYPE -> "application/javascript;charset=UTF-8",
-            CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-          .withHeaders(cors: _*)
-
-      case Transport.XHR_SEND =>
-        val (upEnumerator, upChannel) = Concurrent.broadcast[A]
-        val downIteratee = Iteratee.foreach[A] { userMsg =>
-          (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
-            .map {
-              case ses: ActorRef => ses ! Session.Enqueue(userMsg.asInstanceOf[String])
-            }
-        }
-        // calls the user function and passes the sockjs Enumerator/Iteratee
-        f(request)(upEnumerator, downIteratee)
-        val contentType = request.headers.get(CONTENT_TYPE).getOrElse(Transport.CONTENT_TYPE_PLAIN)
-        contentType match {
-          case Transport.CONTENT_TYPE_PLAIN =>
-            val body = new String(new String(request.body.asRaw.get.asBytes(maxLength).get, request.charset.getOrElse("utf-8")))
-            upChannel push body.asInstanceOf[A]
-            NoContent
-              .withHeaders(
-                CONTENT_TYPE -> contentType,
-                CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-              .withHeaders(cors: _*)
-          case _ => ???
-        }
-    }
-  }
-
-  def handleIframe(implicit request: Request[AnyContent]) = {
-    if (request.headers.toMap.contains(IF_NONE_MATCH)) {
-      NotModified
-    } else {
-      Ok(iframePage.content).withHeaders(
-        CONTENT_TYPE -> "text/html; charset=UTF-8", CACHE_CONTROL -> "max-age=31536000, public",
-        ETAG -> iframePage.getEtag,
-        EXPIRES -> (new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz"))
-          .format(new Date(System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000))))
-    }
-  }
-  def info(websocket: Boolean = true)(implicit request: Request[AnyContent]) = request.method match {
-    case "GET" =>
-      Ok(Json.obj(
-        "websocket" -> websocket,
-        "cookie_needed" -> true,
-        "origins" -> List("*:*"),
-        "entropy" -> randomNumber))
-        .withHeaders(
-          CONTENT_TYPE -> "application/json;charset=UTF-8",
-          CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-        .withHeaders(cors: _*)
-    case "OPTIONS" =>
-      val oneYearSeconds = 365 * 24 * 60 * 60
-      val oneYearms = oneYearSeconds * 1000
-      val expires = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz")
-        .format(new Date(System.currentTimeMillis() + oneYearms))
-      NoContent
-        .withHeaders(
-          EXPIRES -> expires,
-          CACHE_CONTROL -> "public,max-age=31536000",
-          ACCESS_CONTROL_ALLOW_METHODS -> "OPTIONS, GET",
-          ACCESS_CONTROL_MAX_AGE -> oneYearSeconds.toString)
-        .withHeaders(cors: _*)
-  }
 
   /**
    * The same as Websocket.async
@@ -182,4 +81,61 @@ trait SockJs { self: Controller =>
       }
     }
   }
+
+  def handleIframe(implicit request: Request[AnyContent]) = {
+    if (request.headers.toMap.contains(IF_NONE_MATCH)) {
+      NotModified
+    } else {
+      Ok(iframePage.content).withHeaders(
+        CONTENT_TYPE -> "text/html; charset=UTF-8", CACHE_CONTROL -> "max-age=31536000, public",
+        ETAG -> iframePage.getEtag,
+        EXPIRES -> (new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz"))
+          .format(new Date(System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000))))
+    }
+  }
+
+  def handleSession[A](f: RequestHeader => (Enumerator[A], Iteratee[A, Unit]) => Unit)(implicit request: Request[AnyContent]): Result = {
+    val pathList = request.path.split("/").reverse
+    val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
+    transport match {
+      case Transport.XHR 			⇒ XhrTransport.xhrPolling(sessionId)
+      case Transport.XHR_STREAMING	⇒ XhrTransport.xhrStreaming(sessionId)
+      case Transport.XHR_SEND		⇒ XhrTransport.xhrSend(sessionId, f)
+      case Transport.JSON_P			⇒ ???
+      case Transport.JSON_P_SEND	⇒ ???
+      case Transport.EVENT_SOURCE	⇒ ???
+    }
+  }
+
+  def info(websocket: Boolean = true)(implicit request: Request[AnyContent]) = request.method match {
+    case "GET" =>
+      Ok(Json.obj(
+        "websocket" -> websocket,
+        "cookie_needed" -> true,
+        "origins" -> List("*:*"),
+        "entropy" -> randomNumber))
+        .withHeaders(
+          CONTENT_TYPE -> "application/json;charset=UTF-8",
+          CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
+        .withHeaders(cors: _*)
+    case "OPTIONS" =>
+      val oneYearSeconds = 365 * 24 * 60 * 60
+      val oneYearms = oneYearSeconds * 1000
+      val expires = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz")
+        .format(new Date(System.currentTimeMillis() + oneYearms))
+      NoContent
+        .withHeaders(
+          EXPIRES -> expires,
+          CACHE_CONTROL -> "public,max-age=31536000",
+          ACCESS_CONTROL_ALLOW_METHODS -> "OPTIONS, GET",
+          ACCESS_CONTROL_MAX_AGE -> oneYearSeconds.toString)
+        .withHeaders(cors: _*)
+  }
+
+  def cors(implicit req: Request[AnyContent]) = Seq(
+    ACCESS_CONTROL_ALLOW_CREDENTIALS -> "true",
+    ACCESS_CONTROL_ALLOW_ORIGIN -> req.headers.get("origin").map(o => if (o != "null") o else "*").getOrElse("*"))
+    .union(
+      (for (acrh <- req.headers.get(ACCESS_CONTROL_REQUEST_HEADERS))
+        yield (ACCESS_CONTROL_ALLOW_HEADERS -> acrh)).toSeq)
 }
