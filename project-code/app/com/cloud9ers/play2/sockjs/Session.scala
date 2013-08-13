@@ -20,7 +20,7 @@ class Session(sessionId: String) {
   // for queuing the messages to be flushed when the downstream connection is ready 
   private[this] val (msgEnumerator, msgChannel) = Concurrent.broadcast[Event]
 
-  def encodeMsgs(ms: Seq[String]): String = "a" + ms.reduceLeft(_ + _) + "\n" //TODO write the sockjs encoding function
+  def encodeMsgs(ms: Seq[String]): String = ms.reduceLeft(_ + _) //TODO write the sockjs encoding function
   // iterate over the msgEnumertor and keep the context/state of the msg queue
   def msgIteratee: Iteratee[Event, Accumulator] = {
     def step(m: Event, acc: Accumulator)(implicit i: Input[Event]): Iteratee[Event, Accumulator] = i match {
