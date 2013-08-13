@@ -9,6 +9,10 @@ object Transport {
   val XHR_SEND     = "xhr_send"
   val XHR_STREAMING = "xhr_streaming"
   val JSON_P_SEND  = "jsonp_send"
+  val CONTENT_TYPE_JAVASCRIPT = "application/javascript; charset=UTF-8"
+  val CONTENT_TYPE_FORM = "application/x-www-form-urlencoded"
+  val CONTENT_TYPE_PLAIN = "text/plain; charset=UTF-8"
+  val CONTENT_TYPE_HTML = "text/html; charset=UTF-8"
 }
 class Transport {
   /*

@@ -10,6 +10,7 @@ import akka.actor.Props
 
 class SockJsPlugin(app: Application) extends Plugin {
   lazy val prefix = app.configuration.getString("sockjs.prefix").getOrElse("/")
+  lazy val maxLength = app.configuration.getInt("sockjs.maxLength").getOrElse(1024*100)
   lazy val clientUrl = app.configuration.getString("sockjs.clientUrl")
     .getOrElse("http://cdn.sockjs.org/sockjs-0.3.4.min.js")
 

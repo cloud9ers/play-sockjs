@@ -12,7 +12,7 @@ import akka.actor.Props
 class Session extends Actor {
   val queue = scala.collection.mutable.Queue[String]("o\n")
   var listeners = List[ActorRef]()
-  def encodeJson(ms: List[String]) = ms.reduceLeft(_ + _)
+  def encodeJson(ms: List[String]) = ms.reduceLeft(_ + _) //TODO write the sockjs encoding function
 
   def receive = {
     case Session.Enqueue(msg: String) =>
