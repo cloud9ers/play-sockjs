@@ -22,7 +22,6 @@ trait SockJs { self: Controller =>
   lazy val prefix = SockJsPlugin.current.prefix
   lazy val maxLength: Int = SockJsPlugin.current.maxLength
   lazy val sessionManager = SockJsPlugin.current.sessionManager
-  val x:scala.concurrent.duration.FiniteDuration = 1.seconds
   implicit val timeout = Timeout(5.seconds)
 
   val greatingRoute = s"^/$prefix/?".r
@@ -32,59 +31,6 @@ trait SockJs { self: Controller =>
   val sessionUrl = s"^/$prefix/[^.]+/[^.]+/[^.]+".r
 
   lazy val iframePage = new IframePage(current.plugin[SockJsPlugin].map(_.clientUrl).getOrElse(""))
-
-  def cors(implicit req: Request[AnyContent]) = Seq(
-    ACCESS_CONTROL_ALLOW_CREDENTIALS -> "true",
-    ACCESS_CONTROL_ALLOW_ORIGIN -> req.headers.get("origin").map(o => if (o != "null") o else "*").getOrElse("*"))
-    .union(
-      (for (acrh <- req.headers.get(ACCESS_CONTROL_REQUEST_HEADERS))
-        yield (ACCESS_CONTROL_ALLOW_HEADERS -> acrh)).toSeq)
-
-  def handleSession[A](f: RequestHeader => (Enumerator[A], Iteratee[A, Unit]) => Unit)(implicit request: Request[AnyContent]): Result = {
-    val pathList = request.path.split("/").reverse
-    val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
-    transport match {
-      case Transport.XHR 			⇒ XhrTransport.xhrPolling(sessionId)
-      case Transport.XHR_STREAMING	⇒ XhrTransport.xhrStreaming(sessionId)
-      case Transport.XHR_SEND		⇒ XhrTransport.xhrSend(sessionId, f)
-    }
-  }
-
-  def handleIframe(implicit request: Request[AnyContent]) = {
-    if (request.headers.toMap.contains(IF_NONE_MATCH)) {
-      NotModified
-    } else {
-      Ok(iframePage.content).withHeaders(
-        CONTENT_TYPE -> "text/html; charset=UTF-8", CACHE_CONTROL -> "max-age=31536000, public",
-        ETAG -> iframePage.getEtag,
-        EXPIRES -> (new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz"))
-          .format(new Date(System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000))))
-    }
-  }
-  def info(websocket: Boolean = true)(implicit request: Request[AnyContent]) = request.method match {
-    case "GET" =>
-      Ok(Json.obj(
-        "websocket" -> websocket,
-        "cookie_needed" -> true,
-        "origins" -> List("*:*"),
-        "entropy" -> randomNumber))
-        .withHeaders(
-          CONTENT_TYPE -> "application/json;charset=UTF-8",
-          CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-        .withHeaders(cors: _*)
-    case "OPTIONS" =>
-      val oneYearSeconds = 365 * 24 * 60 * 60
-      val oneYearms = oneYearSeconds * 1000
-      val expires = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz")
-        .format(new Date(System.currentTimeMillis() + oneYearms))
-      NoContent
-        .withHeaders(
-          EXPIRES -> expires,
-          CACHE_CONTROL -> "public,max-age=31536000",
-          ACCESS_CONTROL_ALLOW_METHODS -> "OPTIONS, GET",
-          ACCESS_CONTROL_MAX_AGE -> oneYearSeconds.toString)
-        .withHeaders(cors: _*)
-  }
 
   /**
    * The same as Websocket.async
@@ -135,4 +81,61 @@ trait SockJs { self: Controller =>
       }
     }
   }
+
+  def handleIframe(implicit request: Request[AnyContent]) = {
+    if (request.headers.toMap.contains(IF_NONE_MATCH)) {
+      NotModified
+    } else {
+      Ok(iframePage.content).withHeaders(
+        CONTENT_TYPE -> "text/html; charset=UTF-8", CACHE_CONTROL -> "max-age=31536000, public",
+        ETAG -> iframePage.getEtag,
+        EXPIRES -> (new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz"))
+          .format(new Date(System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000))))
+    }
+  }
+
+  def handleSession[A](f: RequestHeader => (Enumerator[A], Iteratee[A, Unit]) => Unit)(implicit request: Request[AnyContent]): Result = {
+    val pathList = request.path.split("/").reverse
+    val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
+    transport match {
+      case Transport.XHR 			⇒ XhrTransport.xhrPolling(sessionId)
+      case Transport.XHR_STREAMING	⇒ XhrTransport.xhrStreaming(sessionId)
+      case Transport.XHR_SEND		⇒ XhrTransport.xhrSend(sessionId, f)
+      case Transport.JSON_P			⇒ ???
+      case Transport.JSON_P_SEND	⇒ ???
+      case Transport.EVENT_SOURCE	⇒ ???
+    }
+  }
+
+  def info(websocket: Boolean = true)(implicit request: Request[AnyContent]) = request.method match {
+    case "GET" =>
+      Ok(Json.obj(
+        "websocket" -> websocket,
+        "cookie_needed" -> true,
+        "origins" -> List("*:*"),
+        "entropy" -> randomNumber))
+        .withHeaders(
+          CONTENT_TYPE -> "application/json;charset=UTF-8",
+          CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
+        .withHeaders(cors: _*)
+    case "OPTIONS" =>
+      val oneYearSeconds = 365 * 24 * 60 * 60
+      val oneYearms = oneYearSeconds * 1000
+      val expires = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz")
+        .format(new Date(System.currentTimeMillis() + oneYearms))
+      NoContent
+        .withHeaders(
+          EXPIRES -> expires,
+          CACHE_CONTROL -> "public,max-age=31536000",
+          ACCESS_CONTROL_ALLOW_METHODS -> "OPTIONS, GET",
+          ACCESS_CONTROL_MAX_AGE -> oneYearSeconds.toString)
+        .withHeaders(cors: _*)
+  }
+
+  def cors(implicit req: Request[AnyContent]) = Seq(
+    ACCESS_CONTROL_ALLOW_CREDENTIALS -> "true",
+    ACCESS_CONTROL_ALLOW_ORIGIN -> req.headers.get("origin").map(o => if (o != "null") o else "*").getOrElse("*"))
+    .union(
+      (for (acrh <- req.headers.get(ACCESS_CONTROL_REQUEST_HEADERS))
+        yield (ACCESS_CONTROL_ALLOW_HEADERS -> acrh)).toSeq)
 }
