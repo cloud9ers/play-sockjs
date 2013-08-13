@@ -10,11 +10,17 @@ import akka.actor.Props
  * Session class to queue messages over multiple connection like xhr and xhr_send
  */
 class Session extends Actor {
-  val queue = scala.collection.mutable.Queue[String]("o\n")
+  val queue = scala.collection.mutable.Queue[String]()
   var listeners = List[ActorRef]()
-  def encodeJson(ms: List[String]) = ms.reduceLeft(_ + _) //TODO write the sockjs encoding function
+  def encodeJson(ms: List[String]) = "a" + ms.reduceLeft(_ + _) + "\n" //TODO write the sockjs encoding function
 
-  def receive = {
+  def receive = connecting
+  def connecting: Receive = {
+    case Session.Dequeue =>
+      sender ! SockJsFrames.OPEN_FRAME + "\n"
+      context.become(open)
+  }
+  def open: Receive = {
     case Session.Enqueue(msg: String) =>
       queue += msg
       println(s"session Enqueue: msg: $msg, ms: $queue, listeners: ${listeners}")
