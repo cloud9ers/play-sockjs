@@ -1,22 +1,10 @@
 package controllers
 
+import com.cloud9ers.play2.sockjs.SockJs
+
+import play.api.libs.iteratee.{ Concurrent, Iteratee }
 import play.api.mvc.Controller
-import com.cloud9ers.play2.sockjs.SockJs
-import play.api.libs.iteratee.Concurrent
-import play.api.libs.iteratee.Iteratee
-import scala.concurrent.{ Future, Promise }
-import play.api.libs.iteratee.Enumerator
-import play.api.mvc.RequestHeader
-import scala.concurrent.ExecutionContext.Implicits.global
-import play.api.mvc.Handler
-import play.api.mvc.Action
-import play.api.mvc.WebSocket
-import play.api.mvc.BodyParser
-import play.api.libs.iteratee._
-import play.api.mvc.Results
-import play.api.mvc.Request
-import play.api.mvc.AnyContent
-import com.cloud9ers.play2.sockjs.SockJs
+import play.api.libs.concurrent.Promise
 
 object SockJsService extends Controller with SockJs {
   /*
@@ -32,10 +20,9 @@ object SockJsService extends Controller with SockJs {
    * Enumerator - to enumerate the msgs that will be sent to the sockjs client
    */
   def sockJsHandler = async { rh =>
-    import play.api.libs.concurrent.Promise
     val (downEnumerator, downChannel) = Concurrent.broadcast[String]
     val upIteratee = Iteratee.foreach[String] { msg => downChannel push msg }
-    play.api.libs.concurrent.Promise.pure(upIteratee, downEnumerator)
+    Promise.pure(upIteratee, downEnumerator)
   }
 
   /**
