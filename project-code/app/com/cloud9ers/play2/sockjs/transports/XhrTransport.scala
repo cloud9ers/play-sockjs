@@ -8,22 +8,40 @@ import play.api.Play.current
 import akka.pattern.ask
 import scala.concurrent.duration._
 import akka.util.Timeout
-import akka.actor.ActorRef
 import play.api.libs.iteratee.Concurrent
-import scala.concurrent.Future
+import scala.concurrent.{ Promise, Future }
+import akka.actor.{ Actor, ActorRef, Props, PoisonPill }
+
+class XhrPollingActor(promise: Promise[String], session: ActorRef) extends Actor {
+  session ! Session.Dequeue
+  def receive: Receive = {
+    case Session.Message(m) => promise success m; self ! PoisonPill
+  }
+}
+
+class XhrStreamingActor(channel: Concurrent.Channel[Array[Byte]], session: ActorRef) extends Actor {
+  session ! Session.Dequeue
+  def receive: Receive = {
+    case Session.Message(m) => channel push m.toArray.map(_.toByte); session ! Session.Dequeue
+  }
+}
 
 object XhrTransport extends Transport {
   val H_BLOCK = ((for (i <- 0 to 2047) yield "h").toArray :+ "\n").reduceLeft(_ + _).toArray.map(_.toByte)
+  lazy val system = SockJsPlugin.current.system
 
-  def xhrPolling(sessionId: String)(implicit request: Request[AnyContent]) =
-    Async((sessionManager ? SessionManager.GetOrCreateSession(sessionId))
-      .flatMap(ses => (ses.asInstanceOf[ActorRef] ? Session.Dequeue)
-        .map(m =>
-          Ok(m.toString)
-            .withHeaders(
-              CONTENT_TYPE -> "application/javascript;charset=UTF-8",
-              CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-            .withHeaders(cors: _*))))
+  def xhrPolling(sessionId: String)(implicit request: Request[AnyContent]) = {
+    val promise = Promise[String]()
+    (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
+      .map(session =>
+        system.actorOf(Props(new XhrPollingActor(promise, session.asInstanceOf[ActorRef])), s"xhr-polling.$sessionId"))
+    Async(promise.future.map(m =>
+      Ok(m.toString)
+        .withHeaders(
+          CONTENT_TYPE -> "application/javascript;charset=UTF-8",
+          CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
+        .withHeaders(cors: _*)))
+  }
 
   def xhrStreaming(sessionId: String)(implicit request: Request[AnyContent]) = {
     val (enum, channel) = Concurrent.broadcast[Array[Byte]]
@@ -31,11 +49,8 @@ object XhrTransport extends Transport {
     Future {
       Thread sleep 100
       channel push H_BLOCK
-      def write: Unit =
-        (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
-          .map(ses => (ses.asInstanceOf[ActorRef] ? Session.Dequeue)
-            .map { m => channel push m.toString.toArray.map(_.toByte); write })
-      write
+      (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
+        .map(session => system.actorOf(Props(new XhrStreamingActor(channel, session.asInstanceOf[ActorRef])), s"xhr-streaming.$sessionId"))
     }
     result
       .withHeaders(
@@ -43,6 +58,7 @@ object XhrTransport extends Transport {
         CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
       .withHeaders(cors: _*)
   }
+
   def xhrSend[A](sessionId: String, f: RequestHeader => (Enumerator[A], Iteratee[A, Unit]) => Unit)(implicit request: Request[AnyContent]) = {
     val (upEnumerator, upChannel) = Concurrent.broadcast[A]
     val downIteratee = Iteratee.foreach[A] { userMsg =>
