@@ -16,10 +16,10 @@ class MessageFrame(sockJsMessages: Array[Byte]) {
 }
 
 object SockJsFrames {
-  val OPEN_FRAME      = new ArrayBuffer() += "o"
-  val OPEN_FRAME_NL   = new ArrayBuffer() += "o\n"
-  val HEARTBEAT_FRAME = new ArrayBuffer() += "h"
-  val HEARTBEAT_FRAME_NL = new ArrayBuffer() += "h\n"
+  val OPEN_FRAME         = "o"
+  val OPEN_FRAME_NL      = "o\n"
+  val HEARTBEAT_FRAME    = "h"
+  val HEARTBEAT_FRAME_NL = "h\n"
   
   def messageFrame(sockJsMessages: Array[Byte], appendNewline: Boolean) = new MessageFrame(sockJsMessages).get(appendNewline)
 }
