@@ -4,6 +4,7 @@
 
 # Home page
 GET     /                           controllers.Application.index
+GET		/echo/:server/:session/websocket 		    controllers.SockJsService.websocket(server, session)
 GET		/echo/$route<.*> 		    controllers.SockJsService.sockJsHandler2(route)
 POST    /echo/$route<.*> 		    controllers.SockJsService.sockJsHandler2(route)
 GET		/echo			 		    controllers.SockJsService.sockJsHandler

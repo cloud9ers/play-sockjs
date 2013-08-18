@@ -15,7 +15,8 @@ import akka.pattern.ask
 import scala.concurrent.duration._
 import akka.util.Timeout
 import akka.actor.ActorRef
-import com.cloud9ers.play2.sockjs.transports.XhrTransport
+import com.cloud9ers.play2.sockjs.transports.{WebSocketTransport,XhrTransport }
+import play.api.mvc.WebSocket
 
 trait SockJs { self: Controller =>
   def randomNumber() = 2L << 30 + Random.nextInt
@@ -31,38 +32,43 @@ trait SockJs { self: Controller =>
   val sessionUrl = s"^/$prefix/[^.]+/[^.]+/[^.]+".r
 
   lazy val iframePage = new IframePage(current.plugin[SockJsPlugin].map(_.clientUrl).getOrElse(""))
-
-  /**
-   * The same as Websocket.async
-   * @param f - user function that takes the request header and return Future of the user's Iteratee and Enumerator
-   */
-  def async[A](f: RequestHeader => Future[(Iteratee[A, _], Enumerator[A])]): play.api.mvc.Action[AnyContent] = {
-    using { rh =>
-      val p = f(rh)
-      val upIteratee = Iteratee.flatten(p.map(_._1))
-      val downEnumerator = Enumerator.flatten(p.map(_._2))
-      (upIteratee, downEnumerator)
+  object SockJs {
+    /**
+     * The same as Websocket.async
+     * @param f - user function that takes the request header and return Future of the user's Iteratee and Enumerator
+     */
+    def async[A](f: RequestHeader => Future[(Iteratee[A, _], Enumerator[A])]): play.api.mvc.Action[AnyContent] = {
+      using { rh =>
+        val p = f(rh)
+        val upIteratee = Iteratee.flatten(p.map(_._1))
+        val downEnumerator = Enumerator.flatten(p.map(_._2))
+        (upIteratee, downEnumerator)
+      }
     }
-  }
 
-  /**
-   * returns Handler and passes a function that pipes the user Enumerator to the sockjs Iteratee
-   * and pipes the sockjs Enumerator to the user Iteratee
-   */
-  def using[A](f: RequestHeader => (Iteratee[A, _], Enumerator[A])): play.api.mvc.Action[AnyContent] = {
-    handler { rh =>
-      (upEnumerator: Enumerator[A], downIteratee: Iteratee[A, Unit]) =>
-        // call the user function and holds the user's Iteratee (in) and Enumerator (out)
-        val (upIteratee, downEnumerator) = f(rh)
+    /**
+     * returns Handler and passes a function that pipes the user Enumerator to the sockjs Iteratee
+     * and pipes the sockjs Enumerator to the user Iteratee
+     */
+    def using[A](f: RequestHeader => (Iteratee[A, _], Enumerator[A])): play.api.mvc.Action[AnyContent] = {
+      handler { rh =>
+        (upEnumerator: Enumerator[A], downIteratee: Iteratee[A, Unit]) =>
+          // call the user function and holds the user's Iteratee (in) and Enumerator (out)
+          val (upIteratee, downEnumerator) = f(rh)
 
-        // pipes the msgs from the sockjs client to the user's Iteratee
-        upEnumerator |>> upIteratee
+          // pipes the msgs from the sockjs client to the user's Iteratee
+          upEnumerator |>> upIteratee
 
-        // pipes the msgs from the user's Enumerator to the sockjs client
-        downEnumerator |>> downIteratee
+          // pipes the msgs from the user's Enumerator to the sockjs client
+          downEnumerator |>> downIteratee
+      }
     }
+    /**
+     * websocket
+     */
+    def websocket[String](f: RequestHeader => Future[(Iteratee[String, _], Enumerator[String])])(implicit frameFormatter: WebSocket.FrameFormatter[String]) =
+      WebSocketTransport.websocket(f)
   }
-
   /**
    * Mainly passes the sockjs Enumerator/Iteratee to the function that associate them with the user's Iteratee/Enumerator respectively
    * According to the transport, it creates the sockjs Enumerator/Iteratee and return Handler in each path
@@ -98,7 +104,7 @@ trait SockJs { self: Controller =>
     val pathList = request.path.split("/").reverse
     val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
     transport match {
-      case Transport.XHR 			⇒ XhrTransport.xhrPolling(sessionId)
+      case Transport.XHR			⇒ XhrTransport.xhrPolling(sessionId)
       case Transport.XHR_STREAMING	⇒ XhrTransport.xhrStreaming(sessionId)
       case Transport.XHR_SEND		⇒ XhrTransport.xhrSend(sessionId, f)
       case Transport.JSON_P			⇒ ???
