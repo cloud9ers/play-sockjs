@@ -27,7 +27,6 @@ class SockJsPlugin(app: Application) extends Plugin {
   override def onStop() {
     Logger.info("Stopping SockJS Plugin.")
   }
-            upChannel push sockjsMessage.asInstanceOf[A]
 }
 
 object SockJsPlugin {

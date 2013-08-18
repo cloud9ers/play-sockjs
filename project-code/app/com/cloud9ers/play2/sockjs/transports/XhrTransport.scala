@@ -11,6 +11,7 @@ import akka.util.Timeout
 import play.api.libs.iteratee.Concurrent
 import scala.concurrent.{ Promise, Future }
 import akka.actor.{ Actor, ActorRef, Props, PoisonPill }
+import com.cloud9ers.play2.sockjs.SockJsFrames
 
 class XhrPollingActor(promise: Promise[String], session: ActorRef) extends Actor {
   session ! Session.Dequeue
@@ -72,14 +73,14 @@ object XhrTransport extends Transport {
     val contentType = request.headers.get(CONTENT_TYPE).getOrElse(Transport.CONTENT_TYPE_PLAIN)
     contentType match {
       case Transport.CONTENT_TYPE_PLAIN =>
-        val body = new String(new String(request.body.asRaw.get.asBytes(maxLength).get, request.charset.getOrElse("utf-8")))
-        upChannel push body.asInstanceOf[A]
+        val message = new String(SockJsFrames.messageFrame(request.body.asRaw.get.asBytes(maxLength).get, true)
+                                           .toArray, request.charset.getOrElse("utf-8"))
+        upChannel push message.asInstanceOf[A]
         NoContent
           .withHeaders(
             CONTENT_TYPE -> contentType,
             CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
           .withHeaders(cors: _*)
-      case _ => ???
     }
   }
 }
