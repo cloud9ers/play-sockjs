@@ -19,6 +19,7 @@ import com.cloud9ers.play2.sockjs.transports.{WebSocketTransport,XhrTransport }
 import play.api.mvc.WebSocket
 
 trait SockJs { self: Controller =>
+  lazy val system = SockJsPlugin.current.system
   def randomNumber() = 2L << 30 + Random.nextInt
   lazy val prefix = SockJsPlugin.current.prefix
   lazy val maxLength: Int = SockJsPlugin.current.maxLength

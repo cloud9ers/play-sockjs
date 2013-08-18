@@ -30,7 +30,6 @@ class XhrStreamingActor(channel: Concurrent.Channel[Array[Byte]], session: Actor
 
 object XhrTransport extends Transport {
   val H_BLOCK = ((for (i <- 0 to 2047) yield "h").toArray :+ "\n").reduceLeft(_ + _).toArray.map(_.toByte)
-  lazy val system = SockJsPlugin.current.system
 
   def xhrPolling(sessionId: String)(implicit request: Request[AnyContent]) = {
     val promise = Promise[String]()
