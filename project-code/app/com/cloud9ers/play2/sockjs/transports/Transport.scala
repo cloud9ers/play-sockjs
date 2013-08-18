@@ -2,6 +2,8 @@ package com.cloud9ers.play2.sockjs.transports
 
 import com.cloud9ers.play2.sockjs.SockJs
 import play.api.mvc.Controller
+import akka.actor.Actor
+import com.cloud9ers.play2.sockjs.SockJsPlugin
 
 object Transport {
   val WEBSOCKET    = "websocket"

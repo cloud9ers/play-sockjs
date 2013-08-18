@@ -17,7 +17,8 @@ class Session extends Actor {
   def receive = connecting
   def connecting: Receive = {
     case Session.Dequeue =>
-      sender ! SockJsFrames.OPEN_FRAME + "\n"
+      println("dequeue OPEN FRAME")
+      sender ! Session.Message(SockJsFrames.OPEN_FRAME + "\n")
       context.become(open)
   }
   def open: Receive = {
@@ -31,7 +32,7 @@ class Session extends Actor {
       val ms = queue.dequeueAll(_ => true).toList
       println(s"Session dequeue: ms: ${ms}, queue: $queue, listeners: ${listeners}")
       if (!ms.isEmpty) {
-        listeners.foreach(sender => sender ! encodeJson(ms))
+        listeners.foreach(sender => sender ! Session.Message(encodeJson(ms)))
         listeners = Nil
       }
   }
@@ -40,6 +41,7 @@ class Session extends Actor {
 object Session {
   case class Enqueue(msg: String)
   case object Dequeue
+  case class Message(msg: String)
 }
 
 class SessionManager extends Actor {
