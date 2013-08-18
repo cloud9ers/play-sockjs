@@ -110,14 +110,15 @@ trait SockJs { self: Controller =>
         val contentType = request.headers.get(CONTENT_TYPE).getOrElse(Transport.CONTENT_TYPE_PLAIN)
         contentType match {
           case Transport.CONTENT_TYPE_PLAIN =>
-            val body = new String(new String(request.body.asRaw.get.asBytes(maxLength).get, request.charset.getOrElse("utf-8")))
-            upChannel push body.asInstanceOf[A]
+            val sockjsMessage = new String(SockJsFrames.messageFrame(request.body.asRaw.get.asBytes(maxLength).get, true)
+                                           .toArray, request.charset.getOrElse("utf-8"))
+            upChannel push sockjsMessage.asInstanceOf[A]
             NoContent
               .withHeaders(
                 CONTENT_TYPE -> contentType,
                 CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
               .withHeaders(cors: _*)
-          case _ =>
+          
 
         }
     }
