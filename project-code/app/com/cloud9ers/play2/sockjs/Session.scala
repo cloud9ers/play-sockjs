@@ -48,6 +48,8 @@ class SessionManager extends Actor {
   def getSession(sessionId: String): Option[ActorRef] = context.child(sessionId)
   def createSession(sessionId: String): ActorRef = context.actorOf(Props[Session], sessionId)
   def receive = {
+    case SessionManager.GetSession(sessionId) =>
+      sender ! getSession(sessionId)
     case SessionManager.GetOrCreateSession(sessionId) =>
       sender ! getSession(sessionId).getOrElse(createSession(sessionId))
   }
@@ -55,4 +57,5 @@ class SessionManager extends Actor {
 
 object SessionManager {
   case class GetOrCreateSession(sessionId: String)
+  case class GetSession(sessionId: String)
 }

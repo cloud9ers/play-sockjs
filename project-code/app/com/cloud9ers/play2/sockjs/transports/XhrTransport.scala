@@ -62,6 +62,8 @@ object XhrTransport extends Transport {
 
   def xhrSend[A](sessionId: String, f: RequestHeader => (Enumerator[A], Iteratee[A, Unit]) => Unit)(implicit request: Request[AnyContent]) = {
     val (upEnumerator, upChannel) = Concurrent.broadcast[A]
+    println("WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW")
+    println(SessionManager.GetSession(sessionId))
     val downIteratee = Iteratee.foreach[A] { userMsg =>
       (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
         .map {
