@@ -12,6 +12,7 @@ import play.api.libs.iteratee.Concurrent
 import scala.concurrent.{ Promise, Future }
 import akka.actor.{ Actor, ActorRef, Props, PoisonPill }
 import com.cloud9ers.play2.sockjs.SockJsFrames
+import play.api.mvc.Result
 
 class XhrPollingActor(promise: Promise[String], session: ActorRef) extends Actor {
   session ! Session.Dequeue
@@ -60,29 +61,27 @@ object XhrTransport extends Transport {
       .withHeaders(cors: _*)
   }
 
-  def xhrSend[A](sessionId: String, f: RequestHeader => (Enumerator[A], Iteratee[A, Unit]) => Unit)(implicit request: Request[AnyContent]) = {
+  def xhrSend[A](sessionId: String, f: RequestHeader => (Enumerator[A], Iteratee[A, Unit]) => Unit)(implicit request: Request[AnyContent]): Result = {
     val (upEnumerator, upChannel) = Concurrent.broadcast[A]
-    println("WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW")
-    println(SessionManager.GetSession(sessionId))
-    val downIteratee = Iteratee.foreach[A] { userMsg =>
-      (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
-        .map {
-          case ses: ActorRef => ses ! Session.Enqueue(userMsg.asInstanceOf[String])
-        }
-    }
-    // calls the user function and passes the sockjs Enumerator/Iteratee
-    f(request)(upEnumerator, downIteratee)
-    val contentType = request.headers.get(CONTENT_TYPE).getOrElse(Transport.CONTENT_TYPE_PLAIN)
-    contentType match {
-      case Transport.CONTENT_TYPE_PLAIN =>
-        val message = new String(SockJsFrames.messageFrame(request.body.asRaw.get.asBytes(maxLength).get, true)
-                                           .toArray, request.charset.getOrElse("utf-8"))
-        upChannel push message.asInstanceOf[A]
-        NoContent
-          .withHeaders(
-            CONTENT_TYPE -> contentType,
-            CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-          .withHeaders(cors: _*)
-    }
+    Async((sessionManager ? SessionManager.GetSession(sessionId))
+      .map {
+        case None => NotFound
+        case Some(ses: ActorRef) =>
+          val downIteratee = Iteratee.foreach[A](userMsg => ses ! Session.Enqueue(userMsg.asInstanceOf[String]))
+          // calls the user function and passes the sockjs Enumerator/Iteratee
+          f(request)(upEnumerator, downIteratee)
+          val contentType = request.headers.get(CONTENT_TYPE).getOrElse(Transport.CONTENT_TYPE_PLAIN)
+          contentType match {
+            case Transport.CONTENT_TYPE_PLAIN =>
+              val message = new String(SockJsFrames.messageFrame(request.body.asRaw.get.asBytes(maxLength).get, true)
+                .toArray, request.charset.getOrElse("utf-8"))
+              upChannel push message.asInstanceOf[A]
+              NoContent
+                .withHeaders(
+                  CONTENT_TYPE -> contentType,
+                  CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
+                .withHeaders(cors: _*)
+          }
+      })
   }
 }
