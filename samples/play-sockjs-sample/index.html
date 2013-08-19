@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>SockJS</title>
+    
+  </head>
+  <body>
+    SockJS
+    <script type="text/javascript" charset="utf-8" src="http://cdn.sockjs.org/sockjs-0.3.js"></script>
+    <script type="text/javascript" charset="utf-8">
+      debugger;
+      var sock = new SockJS('http://localhost:9000/echo');
+      sock.onopen = function() { console.log('open'); sock.send("OK"); };
+      sock.onmessage = function(msg) { alert('message: ' + msg.data); };
+      sock.onclose = function() { console.log('close'); };
+    </script>
+  </body>
+</html>
