@@ -23,6 +23,8 @@ trait SockJs { self: Controller =>
   def randomNumber() = 2L << 30 + Random.nextInt
   lazy val prefix = SockJsPlugin.current.prefix
   lazy val maxLength: Int = SockJsPlugin.current.maxLength
+  val websocketEnabled: Boolean = SockJsPlugin.current.websocketEnabled
+  
   lazy val sessionManager = SockJsPlugin.current.sessionManager
   implicit val timeout = Timeout(5.seconds)
 
@@ -81,7 +83,7 @@ trait SockJs { self: Controller =>
       request.path match {
         case greatingRoute() => Ok("Welcome to SockJS!\n").withHeaders(CONTENT_TYPE -> "text/plain;charset=UTF-8")
         case iframeUrl(_) => handleIframe
-        case infoRoute() => info()
+        case infoRoute() => info(websocket = websocketEnabled)
         case infoDisabledWebsocketRoute() => info(websocket = false)
         case sessionUrl() => handleSession(f)
         case _ => NotFound("Notfound")
