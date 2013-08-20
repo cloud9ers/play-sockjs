@@ -10,7 +10,7 @@ import akka.pattern.ask
 import scala.concurrent.duration._
 import akka.util.Timeout
 
-@deprecated
+@deprecated("","")
 class WebsocketActor[A](channel: Concurrent.Channel[A], session: ActorRef) extends Actor {
   session ! Session.Dequeue
   def receive = {
