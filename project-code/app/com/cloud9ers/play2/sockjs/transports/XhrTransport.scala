@@ -36,12 +36,13 @@ object XhrTransport extends Transport {
     (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
       .map(session =>
         system.actorOf(Props(new XhrPollingActor(promise, session.asInstanceOf[ActorRef])), s"xhr-polling.$sessionId"))
-    Async(promise.future.map(m =>
+    Async(promise.future.map{m =>
+      println("xhr --> " + m) //FIXME: In firefox prints without "\n" and doesn't fire the message event in client
       Ok(m.toString)
         .withHeaders(
           CONTENT_TYPE -> "application/javascript;charset=UTF-8",
           CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-        .withHeaders(cors: _*)))
+        .withHeaders(cors: _*)})
   }
 
   def xhrStreaming(sessionId: String)(implicit request: Request[AnyContent]) = {
@@ -69,18 +70,20 @@ object XhrTransport extends Transport {
           val downIteratee = Iteratee.foreach[A](userMsg => ses ! Session.Enqueue(userMsg.asInstanceOf[String]))
           // calls the user function and passes the sockjs Enumerator/Iteratee
           f(request)(upEnumerator, downIteratee)
-          val contentType = request.headers.get(CONTENT_TYPE).getOrElse(Transport.CONTENT_TYPE_PLAIN)
-          contentType match {
-            case Transport.CONTENT_TYPE_PLAIN =>
-              val message = new String(SockJsFrames.messageFrame(request.body.asRaw.get.asBytes(maxLength).get, true)
-                .toArray, request.charset.getOrElse("utf-8"))
-              upChannel push message.asInstanceOf[A]
-              NoContent
-                .withHeaders(
-                  CONTENT_TYPE -> contentType,
-                  CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-                .withHeaders(cors: _*)
-          }
+          val contentType = request.headers.get(CONTENT_TYPE).getOrElse(Transport.CONTENT_TYPE_PLAIN) //FIXME: sometimes it's application/xml
+          // Parse all content types as Text
+          val message: String = request.body.asRaw
+            .flatMap(r => r.asBytes(maxLength)
+                //FIXME: @amal: message frame should be added in the downstream not in the upstream such as xhr or xhr_streaming .. etc
+              .map(b => new String(SockJsFrames.messageFrame(b, true).toArray, request.charset.getOrElse("utf-8"))))
+            .getOrElse(request.body.asText.getOrElse("")) //FIXME: In firefox request.body.asRaw returns None, works fine with chrome
+            //TODO: find a more decent way to read the body
+          upChannel push message.asInstanceOf[A]
+          NoContent
+            .withHeaders(
+              CONTENT_TYPE -> contentType,
+              CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
+            .withHeaders(cors: _*)
       })
   }
 }
