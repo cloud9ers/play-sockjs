@@ -18,6 +18,7 @@ class XhrPollingActor(promise: Promise[String], session: ActorRef) extends Actor
   session ! Session.Dequeue
   def receive: Receive = {
     case Session.Message(m) => promise success m; self ! PoisonPill
+    case Session.HeartBeatFrame(h) => promise success h; self ! PoisonPill
   }
 }
 
@@ -25,6 +26,7 @@ class XhrStreamingActor(channel: Concurrent.Channel[Array[Byte]], session: Actor
   session ! Session.Dequeue
   def receive: Receive = {
     case Session.Message(m) => channel push m.toArray.map(_.toByte); session ! Session.Dequeue
+    case Session.HeartBeatFrame(h) => channel push h.toArray.map(_.toByte); session ! Session.Dequeue
   }
 }
 
@@ -76,8 +78,8 @@ object XhrTransport extends Transport {
             .flatMap(r => r.asBytes(maxLength)
                 //FIXME: @amal: message frame should be added in the downstream not in the upstream such as xhr or xhr_streaming .. etc
               .map(b => new String(SockJsFrames.messageFrame(b, true).toArray, request.charset.getOrElse("utf-8"))))
+              //TODO: find a more decent way to read the body
             .getOrElse(request.body.asText.getOrElse("")) //FIXME: In firefox request.body.asRaw returns None, works fine with chrome
-            //TODO: find a more decent way to read the body
           upChannel push message.asInstanceOf[A]
           NoContent
             .withHeaders(
