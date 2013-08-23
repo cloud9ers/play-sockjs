@@ -47,7 +47,7 @@ class Session(heartBeatPeriod: Long) extends Actor {
       listeners = Nil
   }
 
-  def startHeartBeat() = { //TODO: need test
+  def startHeartBeat() = { //TODO: heartbeat need test
     implicit val executionContext = context.system.dispatcher
     import scala.language.postfixOps
     heartBeatTask = Some(context.system.scheduler.schedule(200 milliseconds, heartBeatPeriod milliseconds, self, Session.SendHeartBeat))
