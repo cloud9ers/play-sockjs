@@ -22,7 +22,7 @@ class Session(heartBeatPeriod: Long) extends Actor {
   def connecting: Receive = {
     case Session.Dequeue =>
       logger.debug("dequeue OPEN FRAME")
-      sender ! Session.Message(SockJsFrames.OPEN_FRAME + "\n")
+      sender ! Session.Message(SockJsFrames.OPEN_FRAME)
       context.become(open)
       startHeartBeat() // start periodic task: self ! Enqueue(hearbeat), heartbeat period
   }
@@ -45,6 +45,7 @@ class Session(heartBeatPeriod: Long) extends Actor {
     case Session.SendHeartBeat =>
       listeners.foreach(sender => sender ! Session.HeartBeatFrame(SockJsFrames.HEARTBEAT_FRAME))
       listeners = Nil
+      //TODO: heart beat: kill the actor if no transport actor sent ack on the previous heart beat
   }
 
   def startHeartBeat() = { //TODO: heartbeat need test

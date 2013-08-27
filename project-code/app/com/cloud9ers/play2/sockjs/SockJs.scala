@@ -7,18 +7,20 @@ import scala.concurrent.Future
 import java.util.Date
 import scala.util.Random
 import play.api.libs.iteratee.{ Concurrent, Enumerator, Iteratee }
-import play.api.mvc.{ Action, Controller, Request, RequestHeader, AnyContent, Result }
+import play.api.mvc.{ Action, WebSocket, Controller, Request, RequestHeader, AnyContent, Result }
 import play.api.libs.json.Json
 import play.api.libs.json.Json.toJsFieldJsValueWrapper
 import play.api.Play.current
+import play.api.Logger
 import akka.pattern.ask
 import scala.concurrent.duration._
 import akka.util.Timeout
 import akka.actor.ActorRef
 import com.cloud9ers.play2.sockjs.transports.{WebSocketTransport,XhrTransport }
-import play.api.mvc.WebSocket
+import com.cloud9ers.play2.sockjs.transports.EventSourceTransport
 
 trait SockJs { self: Controller =>
+  lazy val logger = SockJsPlugin.current.logger
   lazy val system = SockJsPlugin.current.system
   def randomNumber() = 2L << 30 + Random.nextInt
   lazy val prefix = SockJsPlugin.current.prefix
@@ -35,6 +37,7 @@ trait SockJs { self: Controller =>
   val sessionUrl = s"^/$prefix/[^.]+/[^.]+/[^.]+".r
 
   lazy val iframePage = new IframePage(current.plugin[SockJsPlugin].map(_.clientUrl).getOrElse(""))
+
   object SockJs {
     /**
      * The same as Websocket.async
@@ -78,8 +81,8 @@ trait SockJs { self: Controller =>
    * calls enqueue/dequeue of the session to handle msg queue between send and receive
    */
   def handler[A](f: RequestHeader => (Enumerator[A], Iteratee[A, Unit]) => Unit) = {
-    Action { implicit request => // Should match handler type (Action, Websocket .. etc)
-      println(request.path)
+    Action { implicit request =>
+      logger.debug(request.path)
       request.path match {
         case greatingRoute() => Ok("Welcome to SockJS!\n").withHeaders(CONTENT_TYPE -> "text/plain;charset=UTF-8")
         case iframeUrl(_) => handleIframe
@@ -112,7 +115,7 @@ trait SockJs { self: Controller =>
       case Transport.XHR_SEND		⇒ XhrTransport.xhrSend(sessionId, f)
       case Transport.JSON_P			⇒ ???
       case Transport.JSON_P_SEND	⇒ ???
-      case Transport.EVENT_SOURCE	⇒ ???
+      case Transport.EVENT_SOURCE	⇒ EventSourceTransport.eventSource(sessionId)
     }
   }
 
