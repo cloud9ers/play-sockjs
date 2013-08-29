@@ -16,8 +16,7 @@ import akka.pattern.ask
 import scala.concurrent.duration._
 import akka.util.Timeout
 import akka.actor.ActorRef
-import com.cloud9ers.play2.sockjs.transports.{WebSocketTransport,XhrTransport }
-import com.cloud9ers.play2.sockjs.transports.EventSourceTransport
+import com.cloud9ers.play2.sockjs.transports.{ WebSocketTransport, XhrTransport, EventSourceTransport, JsonPTransport }
 
 trait SockJs { self: Controller =>
   lazy val logger = SockJsPlugin.current.logger
@@ -113,8 +112,8 @@ trait SockJs { self: Controller =>
       case Transport.XHR			⇒ XhrTransport.xhrPolling(sessionId)
       case Transport.XHR_STREAMING	⇒ XhrTransport.xhrStreaming(sessionId)
       case Transport.XHR_SEND		⇒ XhrTransport.xhrSend(sessionId, f)
-      case Transport.JSON_P			⇒ ???
-      case Transport.JSON_P_SEND	⇒ ???
+      case Transport.JSON_P			⇒ JsonPTransport.jsonpPolling(sessionId)
+      case Transport.JSON_P_SEND	⇒ JsonPTransport.jsonpSend(sessionId, f)
       case Transport.EVENT_SOURCE	⇒ EventSourceTransport.eventSource(sessionId)
     }
   }
