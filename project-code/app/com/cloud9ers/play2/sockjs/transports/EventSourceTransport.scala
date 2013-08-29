@@ -2,7 +2,6 @@ package com.cloud9ers.play2.sockjs.transports
 
 import com.cloud9ers.play2.sockjs.{ SockJsPlugin, Session, SessionManager }
 import play.api.mvc.{ RequestHeader, Request, AnyContent }
-import play.api.libs.iteratee.{ Iteratee, Enumerator }
 import scala.concurrent.ExecutionContext.Implicits.global
 import play.api.Play.current
 import akka.pattern.ask
@@ -15,8 +14,11 @@ import com.cloud9ers.play2.sockjs.SockJsFrames
 import play.api.mvc.Result
 import play.api.libs.EventSource
 import play.api.libs.iteratee.Input
+import akka.event.Logging
 
-class EventSourceActor(channel: Concurrent.Channel[String], session: ActorRef) extends Actor {
+class EventSourceActor(channel: Concurrent.Channel[String], session: ActorRef, maxBytesStreaming: Int) extends Actor {
+  private[this] val logger = Logging(context.system, this)
+
   override def preStart() {
     import scala.language.postfixOps
     context.system.scheduler.scheduleOnce(100 milliseconds) {
@@ -24,18 +26,28 @@ class EventSourceActor(channel: Concurrent.Channel[String], session: ActorRef) e
       session ! Session.Dequeue
     }
   }
+
   def receive: Receive = {
-    case Session.Message(m) => channel push s"data: $m\r\n\r\n"; session ! Session.Dequeue
+    case Session.Message(m) =>
+      channel push s"data: $m\r\n\r\n"
+      if (m.length < maxBytesStreaming)
+        session ! Session.Dequeue
+      else {
+        channel.eofAndEnd()
+        self ! PoisonPill
+      }
+
     case Session.HeartBeatFrame(h) => channel push s"data: $h\r\n\r\n"; session ! Session.Dequeue
   }
 }
 
 object EventSourceTransport extends Transport {
+  val maxBytesStreaming = SockJsPlugin.current.maxBytesStreaming
 
   def eventSource(sessionId: String)(implicit request: Request[AnyContent]) =
     Async((sessionManager ? SessionManager.GetOrCreateSession(sessionId)).map { session =>
       val (enum, channel) = Concurrent.broadcast[String]
-      val eventSourceActor = system.actorOf(Props(new EventSourceActor(channel, session.asInstanceOf[ActorRef])), s"eventsource.$sessionId")
+      val eventSourceActor = system.actorOf(Props(new EventSourceActor(channel, session.asInstanceOf[ActorRef], maxBytesStreaming)), s"eventsource.$sessionId")
       (Ok stream enum.onDoneEnumerating(eventSourceActor ! PoisonPill))
         .withHeaders(
           CONTENT_TYPE -> "text/event-stream;charset=UTF-8",
