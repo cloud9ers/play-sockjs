@@ -1,7 +1,7 @@
 package com.cloud9ers.play2.sockjs.transports
 
 import com.cloud9ers.play2.sockjs.{ SockJsPlugin, Session, SessionManager }
-import play.api.mvc.{ RequestHeader, Request, AnyContent }
+import play.api.mvc.{ RequestHeader, Request }
 import play.api.libs.iteratee.{ Iteratee, Enumerator }
 import scala.concurrent.ExecutionContext.Implicits.global
 import play.api.Play.current
@@ -13,11 +13,12 @@ import scala.concurrent.{ Promise, Future }
 import akka.actor.{ Actor, ActorRef, Props, PoisonPill }
 import com.cloud9ers.play2.sockjs.SockJsFrames
 import play.api.mvc.Result
+import play.api.mvc.AnyContent
 
 class XhrPollingActor(promise: Promise[String], session: ActorRef) extends Actor {
   session ! Session.Dequeue
   def receive: Receive = {
-    case Session.Message(m) => promise success m + "\n"; self ! PoisonPill
+    case Session.Message(m) => promise success ((if (m == "o") m else "a" + m ) + "\n"); self ! PoisonPill //TODO: 'a' dirty solution 
     case Session.HeartBeatFrame(h) => promise success h; self ! PoisonPill
   }
 }
@@ -32,7 +33,7 @@ class XhrStreamingActor(channel: Concurrent.Channel[Array[Byte]], session: Actor
   }
   def receive: Receive = {
     case Session.Message(m) =>
-      channel push (m + "\n").toArray.map(_.toByte); session ! Session.Dequeue
+      channel push (if (m == "o") m + "\n" else "a" + m + "\n").toArray.map(_.toByte); session ! Session.Dequeue //TODO: 'a' dirty solution 
     case Session.HeartBeatFrame(h) => channel push h.toArray.map(_.toByte); session ! Session.Dequeue
   }
 }
@@ -75,13 +76,7 @@ object XhrTransport extends Transport {
         f(request)(upEnumerator, downIteratee)
         val contentType = request.headers.get(CONTENT_TYPE).getOrElse(Transport.CONTENT_TYPE_PLAIN) //FIXME: sometimes it's application/xml
         // Parse all content types as Text
-        val message: String = request.body.asRaw
-          .flatMap(r => r.asBytes(maxLength)
-            //FIXME: @amal: message frame should be added in the downstream not in the upstream such as xhr or xhr_streaming .. etc
-            // I suggest to use Enumeratee
-            .map(b => new String(SockJsFrames.messageFrame(b, false).toArray, request.charset.getOrElse("utf-8"))))
-          //TODO: find a more decent way to read the body
-          .getOrElse(request.body.asText.getOrElse("")) //FIXME: In firefox request.body.asRaw returns None, works fine with chrome
+        val message: String = request.body.asRaw.flatMap(r => r.asBytes(maxLength).map(b => new String(b))).getOrElse(request.body.asText.getOrElse(""))
         upChannel push message.asInstanceOf[A]
         NoContent
           .withHeaders(

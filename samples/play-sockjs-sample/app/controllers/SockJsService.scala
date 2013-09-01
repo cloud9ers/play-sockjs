@@ -25,11 +25,10 @@ object SockJsService extends Controller with SockJs {
     Promise.pure(upIteratee, downEnumerator)
 
   }
-  def sockJsHandler = SockJs.async(handler)
 
-  /**
-   * overload to the sockJsHandler to take the url parameter
-   */
+  def sockJsHandler = SockJs.async(handler) //TODO: Try to make it a single function and pass the complementary path instead
+  //hint: https://github.com/cgbystrom/sockjs-netty/blob/master/src/main/java/com/cgbystrom/sockjs/ServiceRouter.java#L94
+
   def sockJsHandler2(route: String) = sockJsHandler
 
   def websocket(server: String, session: String) = SockJs.websocket(handler)

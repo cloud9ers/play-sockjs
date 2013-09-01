@@ -1,7 +1,7 @@
 package com.cloud9ers.play2.sockjs.transports
 
 import com.cloud9ers.play2.sockjs.{ SockJsPlugin, Session, SessionManager }
-import play.api.mvc.{ RequestHeader, Request, AnyContent }
+import play.api.mvc.{ RequestHeader, Request }
 import scala.concurrent.ExecutionContext.Implicits.global
 import play.api.Play.current
 import akka.pattern.ask
@@ -15,6 +15,7 @@ import play.api.mvc.Result
 import play.api.libs.EventSource
 import play.api.libs.iteratee.Input
 import akka.event.Logging
+import play.api.mvc.AnyContent
 
 class EventSourceActor(channel: Concurrent.Channel[String], session: ActorRef, maxBytesStreaming: Int) extends Actor {
   private[this] val logger = Logging(context.system, this)
@@ -29,7 +30,7 @@ class EventSourceActor(channel: Concurrent.Channel[String], session: ActorRef, m
 
   def receive: Receive = {
     case Session.Message(m) =>
-      channel push s"data: $m\r\n\r\n"
+      channel push s"data: ${if (m == "o") m else "a" + m}\r\n\r\n"
       if (m.length < maxBytesStreaming)
         session ! Session.Dequeue
       else {

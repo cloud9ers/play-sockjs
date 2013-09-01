@@ -3,7 +3,7 @@ package com.cloud9ers.play2.sockjs.transports
 import com.cloud9ers.play2.sockjs.{ Session, SessionManager }
 import play.api.libs.iteratee.{ Concurrent, Iteratee, Enumerator }
 import akka.actor.{ Actor, ActorRef, Props }
-import play.api.mvc.{ RequestHeader, WebSocket, AnyContent }
+import play.api.mvc.{ RequestHeader, WebSocket }
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import akka.pattern.ask

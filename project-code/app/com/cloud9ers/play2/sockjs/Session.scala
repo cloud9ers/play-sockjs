@@ -24,7 +24,7 @@ class Session(heartBeatPeriod: Long) extends Actor {
       logger.debug("dequeue OPEN FRAME")
       sender ! Session.Message(SockJsFrames.OPEN_FRAME)
       context.become(open)
-//      startHeartBeat() // start periodic task: self ! Enqueue(hearbeat), heartbeat period
+      startHeartBeat() // start periodic task: self ! Enqueue(hearbeat), heartbeat period
   }
 
   def open: Receive = {
