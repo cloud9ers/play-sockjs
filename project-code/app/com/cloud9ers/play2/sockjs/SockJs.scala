@@ -58,12 +58,12 @@ trait SockJs { self: Controller =>
      */
     def using(f: RequestHeader => (Iteratee[JsValue, _], Enumerator[JsValue])): play.api.mvc.Action[AnyContent] =
       handler { rh =>
-        (upEnumerator: Enumerator[String], downIteratee: Iteratee[JsValue, Unit]) =>
+        (upEnumerator: Enumerator[JsValue], downIteratee: Iteratee[JsValue, Unit]) =>
           // call the user function and holds the user's Iteratee (in) and Enumerator (out)
           val (upIteratee, downEnumerator) = f(rh)
 
           // pipes the msgs from the sockjs client to the user's Iteratee
-          upEnumerator &> JsonCodec.JsonDecoder |>> upIteratee
+          upEnumerator |>> upIteratee
 
           // pipes the msgs from the user's Enumerator to the sockjs client
           downEnumerator |>> downIteratee
@@ -80,7 +80,7 @@ trait SockJs { self: Controller =>
    * According to the transport, it creates the sockjs Enumerator/Iteratee and return Handler in each path
    * calls enqueue/dequeue of the session to handle msg queue between send and receive
    */
-  def handler(f: RequestHeader => (Enumerator[String], Iteratee[JsValue, Unit]) => Unit) =
+  def handler(f: RequestHeader => (Enumerator[JsValue], Iteratee[JsValue, Unit]) => Unit) =
     Action { implicit request =>
       logger.debug(request.path)
       request.path match {
@@ -104,7 +104,7 @@ trait SockJs { self: Controller =>
           .format(new Date(System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000))))
     }
 
-  def handleSession(f: RequestHeader => (Enumerator[String], Iteratee[JsValue, Unit]) => Unit)(implicit request: Request[AnyContent]): Result = {
+  def handleSession(f: RequestHeader => (Enumerator[JsValue], Iteratee[JsValue, Unit]) => Unit)(implicit request: Request[AnyContent]): Result = {
     val pathList = request.path.split("/").reverse
     val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
     transport match {
