@@ -10,7 +10,7 @@
     <script type="text/javascript" charset="utf-8" src="http://cdn.sockjs.org/sockjs-0.3.js"></script>
     <script type="text/javascript" charset="utf-8">
       var sock = new SockJS('http://localhost:9000/echo');
-      sock.onopen = function() { console.log('open'); sock.send("OK"); };
+      sock.onopen = function() { console.log('open'); sock.send(JSON.stringify({msg:"OK"})); };
       sock.onmessage = function(msg) { console.log('message: ' + msg.data); alert('message: ' + msg.data); };
       sock.onclose = function() { console.log('close'); };
     </script>
