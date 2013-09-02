@@ -5,6 +5,7 @@ import play.api.libs.iteratee.{ Concurrent, Iteratee }
 import play.api.mvc.{ Controller, WebSocket }
 import play.api.libs.concurrent.Promise
 import play.api.mvc.RequestHeader
+import play.api.libs.json.JsValue
 
 object SockJsService extends Controller with SockJs {
   /*
@@ -20,16 +21,16 @@ object SockJsService extends Controller with SockJs {
    * Enumerator - to enumerate the msgs that will be sent to the sockjs client
    */
   def handler(rh: RequestHeader) = {
-    val (downEnumerator, downChannel) = Concurrent.broadcast[String]
-    val upIteratee = Iteratee.foreach[String] { msg => downChannel push msg; println(s"handler ::::::::::: message: $msg, length(${msg.length})") }
+    val (downEnumerator, downChannel) = Concurrent.broadcast[JsValue]
+    val upIteratee = Iteratee.foreach[JsValue] { msg => downChannel push msg; println(s"handler ::::::::::: message: $msg") }
     Promise.pure(upIteratee, downEnumerator)
 
   }
 
   def sockJsHandler = SockJs.async(handler) //TODO: Try to make it a single function and pass the complementary path instead
-  //hint: https://github.com/cgbystrom/sockjs-netty/blob/master/src/main/java/com/cgbystrom/sockjs/ServiceRouter.java#L94
+  //hint https://github.com/cgbystrom/sockjs-netty/blob/master/src/main/java/com/cgbystrom/sockjs/ServiceRouter.java#L94
 
   def sockJsHandler2(route: String) = sockJsHandler
 
-  def websocket(server: String, session: String) = SockJs.websocket(handler)
+  def websocket[String](server: String, session: String) = SockJs.websocket(handler)
 }

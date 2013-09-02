@@ -16,12 +16,14 @@ import play.api.mvc.Result
 import scala.util.{ Success, Failure }
 import java.net.URLDecoder
 import java.io.UnsupportedEncodingException
+import play.api.libs.json.JsValue
+import com.cloud9ers.play2.sockjs.StringEscapeUtils.escapeJavaScript
 
 class JsonpPollingActor(promise: Promise[String], session: ActorRef) extends Actor {
   session ! Session.Dequeue
   def receive: Receive = {
     case Session.Message(m) =>
-      promise success ((if(m == "o") "" else "a") + m); self ! PoisonPill //FIXIME: Dirty solution in JsonP for append 'a'
+      promise success ((if (m == "o") "" else "a") + m); self ! PoisonPill //FIXIME: Dirty solution in JsonP for append 'a'
     case Session.HeartBeatFrame(h) => promise success h; self ! PoisonPill
   }
 }
@@ -34,16 +36,15 @@ object JsonPTransport extends Transport {
       (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
         .map(session =>
           system.actorOf(Props(new JsonpPollingActor(promise, session.asInstanceOf[ActorRef])), s"xhr-polling.$sessionId"))
-      promise.future.map { m =>
-        Ok(s"""${callback.reduceLeft(_ + _)}("${m.toString}");\r\n""") //callback(\\"m\\");\r\n //FIXME: skip '"'
+      promise.future.map(m =>
+        Ok(s"""${callback.reduceLeft(_ + _)}("${escapeJavaScript(m)}");\r\n""") //callback(\\"m\\");\r\n //FIXME: skip '"'
           .withHeaders(
             CONTENT_TYPE -> "application/javascript;charset=UTF-8",
             CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-          .withHeaders(cors: _*)
-      }
+          .withHeaders(cors: _*))
     }.getOrElse(Future(InternalServerError("\"callback\" parameter required\n"))))
 
-  def jsonpSend[A](sessionId: String, f: RequestHeader => (Enumerator[A], Iteratee[A, Unit]) => Unit)(implicit request: Request[AnyContent]): Result =
+  def jsonpSend(sessionId: String, f: RequestHeader => (Enumerator[String], Iteratee[JsValue, Unit]) => Unit)(implicit request: Request[AnyContent]): Result =
     Async(
       request.contentType.map(_.toLowerCase match {
         case "application/x-www-form-urlencoded" =>
@@ -65,10 +66,10 @@ object JsonPTransport extends Transport {
           (sessionManager ? SessionManager.GetSession(sessionId)).map {
             case None => NotFound
             case Some(ses: ActorRef) =>
-              val (upEnumerator, upChannel) = Concurrent.broadcast[A]
-              val downIteratee = Iteratee.foreach[A](userMsg => ses ! Session.Enqueue(userMsg.asInstanceOf[String]))
+              val (upEnumerator, upChannel) = Concurrent.broadcast[String]
+              val downIteratee = Iteratee.foreach[JsValue](userMsg => ses ! Session.Enqueue(userMsg))
               f(request)(upEnumerator, downIteratee)
-              upChannel push message.asInstanceOf[A]
+              upChannel push message
               Ok("ok")
                 .withHeaders(
                   CONTENT_TYPE -> "text/plain; charset=UTF-8",

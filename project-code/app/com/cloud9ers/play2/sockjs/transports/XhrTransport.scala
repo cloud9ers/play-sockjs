@@ -14,6 +14,7 @@ import akka.actor.{ Actor, ActorRef, Props, PoisonPill }
 import com.cloud9ers.play2.sockjs.SockJsFrames
 import play.api.mvc.Result
 import play.api.mvc.AnyContent
+import play.api.libs.json.JsValue
 
 class XhrPollingActor(promise: Promise[String], session: ActorRef) extends Actor {
   session ! Session.Dequeue
@@ -66,18 +67,18 @@ object XhrTransport extends Transport {
         .withHeaders(cors: _*)
     })
 
-  def xhrSend[A](sessionId: String, f: RequestHeader => (Enumerator[A], Iteratee[A, Unit]) => Unit)(implicit request: Request[AnyContent]): Result =
+  def xhrSend(sessionId: String, f: RequestHeader => (Enumerator[String], Iteratee[JsValue, Unit]) => Unit)(implicit request: Request[AnyContent]): Result =
     Async((sessionManager ? SessionManager.GetSession(sessionId)).map {
       case None => NotFound
       case Some(ses: ActorRef) =>
-        val (upEnumerator, upChannel) = Concurrent.broadcast[A]
-        val downIteratee = Iteratee.foreach[A](userMsg => ses ! Session.Enqueue(userMsg.asInstanceOf[String]))
+        val (upEnumerator, upChannel) = Concurrent.broadcast[String]
+        val downIteratee = Iteratee.foreach[JsValue](userMsg => ses ! Session.Enqueue(userMsg))
         // calls the user function and passes the sockjs Enumerator/Iteratee
         f(request)(upEnumerator, downIteratee)
         val contentType = request.headers.get(CONTENT_TYPE).getOrElse(Transport.CONTENT_TYPE_PLAIN) //FIXME: sometimes it's application/xml
         // Parse all content types as Text
         val message: String = request.body.asRaw.flatMap(r => r.asBytes(maxLength).map(b => new String(b))).getOrElse(request.body.asText.getOrElse(""))
-        upChannel push message.asInstanceOf[A]
+        upChannel push message
         NoContent
           .withHeaders(
             CONTENT_TYPE -> contentType,
