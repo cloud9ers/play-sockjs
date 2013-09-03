@@ -65,7 +65,8 @@ object XhrTransport extends Transport {
     val (upEnumerator, upChannel) = Concurrent.broadcast[A]
     Async((sessionManager ? SessionManager.GetSession(sessionId))
       .map {
-        case None => NotFound
+        case None => 
+          NotFound
         case Some(ses: ActorRef) =>
           val downIteratee = Iteratee.foreach[A](userMsg => ses ! Session.Enqueue(userMsg.asInstanceOf[String]))
           // calls the user function and passes the sockjs Enumerator/Iteratee
