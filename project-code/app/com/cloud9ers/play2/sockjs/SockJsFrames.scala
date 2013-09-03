@@ -20,6 +20,7 @@ object SockJsFrames {
   val OPEN_FRAME_NL      = "o\n"
   val HEARTBEAT_FRAME    = "h"
   val HEARTBEAT_FRAME_NL = "h\n"
-  
+  val XHR_STREAM_H_BLOCK = ((for (i <- 0 to 2047) yield "h").toArray :+ "\n").reduceLeft(_ + _).toArray.map(_.toByte)
+
   def messageFrame(sockJsMessages: Array[Byte], appendNewline: Boolean) = new MessageFrame(sockJsMessages).get(appendNewline)
 }
