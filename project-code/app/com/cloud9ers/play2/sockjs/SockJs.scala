@@ -35,6 +35,7 @@ trait SockJs { self: Controller =>
   val infoDisabledWebsocketRoute = s"^/disabled_websocket_$prefix/info".r
   val iframeUrl = s"^/$prefix/iframe[0-9-.a-z_]*.html(\\?t=[0-9-.a-z_]*)?".r
   val sessionUrl = s"^/$prefix/[^.]+/[^.]+/[^.]+".r
+  val closeSessionUrl = "^/close/[^.]+(/[^.]+)$".r
 
   lazy val iframePage = new IframePage(current.plugin[SockJsPlugin].map(_.clientUrl).getOrElse(""))
 
@@ -89,6 +90,7 @@ trait SockJs { self: Controller =>
         case infoRoute() => info(websocket = websocketEnabled)
         case infoDisabledWebsocketRoute() => info(websocket = false)
         case sessionUrl() => handleSession(f)
+        case closeSessionUrl(sessionId) => closeSession(f)
         case _ => NotFound("Notfound")
       }
     }
@@ -115,6 +117,11 @@ trait SockJs { self: Controller =>
       case Transport.JSON_P_SEND	⇒ JsonPTransport.jsonpSend(sessionId, f)
       case Transport.EVENT_SOURCE	⇒ EventSourceTransport.eventSource(sessionId)
     }
+  }
+
+  def closeSession(f: RequestHeader => (Enumerator[JsValue], Iteratee[JsValue, Unit]) => Unit)(implicit request: Request[AnyContent]): Result = {
+    //TODO: implement close session here
+    Ok("closed") //dummy implementation should be removed later
   }
 
   def info(websocket: Boolean = true)(implicit request: Request[AnyContent]) = request.method match {
