@@ -73,6 +73,7 @@ object XhrTransport extends Transport {
   def xhrSend(sessionId: String, f: RequestHeader => (Enumerator[JsValue], Iteratee[JsValue, Unit]) => Unit)(implicit request: Request[AnyContent]): Result =
     Async((sessionManager ? SessionManager.GetSession(sessionId)).map {
       case None => NotFound
+          NotFound
       case Some(ses: ActorRef) =>
         val (upEnumerator, upChannel) = Concurrent.broadcast[JsValue]
         val downIteratee = Iteratee.foreach[JsValue](userMsg => ses ! Session.Enqueue(userMsg))
