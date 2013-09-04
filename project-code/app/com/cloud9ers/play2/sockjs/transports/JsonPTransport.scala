@@ -18,6 +18,8 @@ import java.net.URLDecoder
 import java.io.UnsupportedEncodingException
 import play.api.libs.json.JsValue
 import com.cloud9ers.play2.sockjs.StringEscapeUtils.escapeJavaScript
+import com.cloud9ers.play2.sockjs.JsonCodec
+import org.codehaus.jackson.JsonParseException
 
 class JsonpPollingActor(promise: Promise[String], session: ActorRef) extends Actor {
   session ! Session.Dequeue
@@ -44,13 +46,15 @@ object JsonPTransport extends Transport {
           .withHeaders(cors: _*))
     }.getOrElse(Future(InternalServerError("\"callback\" parameter required\n"))))
 
-  def jsonpSend(sessionId: String, f: RequestHeader => (Enumerator[String], Iteratee[JsValue, Unit]) => Unit)(implicit request: Request[AnyContent]): Result =
+  def jsonpSend(sessionId: String, f: RequestHeader => (Enumerator[JsValue], Iteratee[JsValue, Unit]) => Unit)(implicit request: Request[AnyContent]): Result =
     Async(
       request.contentType.map(_.toLowerCase match {
         case "application/x-www-form-urlencoded" =>
-          request.body.asFormUrlEncoded.get("d") match {
-            case Nil => Failure(new Exception("Payload expected."))
-            case chars => Success(chars.reduceLeft(_ + _))
+          request.body.asFormUrlEncoded.get.get("d").getOrElse(Nil) match { //TODO: clean asFormUrlEncoded in jsonP
+            case Nil =>
+              Failure(new Exception("Payload expected."))
+            case chars =>
+              Success(chars.reduceLeft(_ + _))
           }
         case "text/plain" =>
           request.body.asText match {
@@ -66,15 +70,22 @@ object JsonPTransport extends Transport {
           (sessionManager ? SessionManager.GetSession(sessionId)).map {
             case None => NotFound
             case Some(ses: ActorRef) =>
-              val (upEnumerator, upChannel) = Concurrent.broadcast[String]
+              val (upEnumerator, upChannel) = Concurrent.broadcast[JsValue]
               val downIteratee = Iteratee.foreach[JsValue](userMsg => ses ! Session.Enqueue(userMsg))
               f(request)(upEnumerator, downIteratee)
-              upChannel push message
-              Ok("ok")
-                .withHeaders(
-                  CONTENT_TYPE -> "text/plain; charset=UTF-8",
-                  CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-                .withHeaders(cors: _*)
+              if (message == "")
+                InternalServerError("Payload expected.")
+              else
+                try {
+                  upChannel push JsonCodec.decodeJson(message)
+                  Ok("ok")
+                    .withHeaders(
+                      CONTENT_TYPE -> "text/plain; charset=UTF-8",
+                      CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
+                    .withHeaders(cors: _*)
+                } catch {
+                  case e: JsonParseException => InternalServerError("Broken JSON encoding.")
+                }
             case Failure(e) => InternalServerError(e.getMessage)
           }
       }.getOrElse(Future(InternalServerError("Invalid Content-Type"))))
