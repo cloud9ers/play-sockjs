@@ -40,8 +40,8 @@ object JsonCodec {
    * This code adapted from http://wiki.fasterxml.com/JacksonSampleQuoteChars
    *
    * Refs:
-   * https://github.com/netty/netty/pull/1615/files#L29R71
-   * https://github.com/eclipse/vert.x/blob/master/vertx-core/src/main/java/org/vertx/java/core/sockjs/impl/JsonCodec.java#L32
+   *  - https://github.com/netty/netty/pull/1615/files#L29R71
+   *  - https://github.com/eclipse/vert.x/blob/master/vertx-core/src/main/java/org/vertx/java/core/sockjs/impl/JsonCodec.java#L32
    */
   def escapeCharacters(message: String): String =
     message.foldLeft(new StringBuilder(message.length)) {

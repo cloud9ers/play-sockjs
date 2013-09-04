@@ -29,8 +29,11 @@ class EventSourceActor(channel: Concurrent.Channel[String], session: ActorRef, m
   }
 
   def receive: Receive = {
+    case Session.OpenMessage =>
+      channel push s"data: ${SockJsFrames.OPEN_FRAME}\r\n\r\n"; session ! Session.Dequeue
+      
     case Session.Message(m) =>
-      channel push s"data: ${if (m == "o") m else "a" + m}\r\n\r\n"
+      channel push s"data: a$m\r\n\r\n"
       if (m.length < maxBytesStreaming)
         session ! Session.Dequeue
       else {
