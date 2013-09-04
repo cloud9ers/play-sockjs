@@ -4,6 +4,30 @@ import java.io.StringWriter
 import java.util.Locale
 
 object StringEscapeUtils {
+  /**
+   * <p>Escapes the characters in a <code>String</code> using JavaScript String rules.</p>
+   * <p>Escapes any values it finds into their JavaScript String form.
+   * Deals correctly with quotes and control-chars (tab, backslash, cr, ff, etc.) </p>
+   * <p/>
+   * <p>So a tab becomes the characters <code>'\\'</code> and
+   * <code>'t'</code>.</p>
+   * <p/>
+   * <p>The only difference between Java strings and JavaScript strings
+   * is that in JavaScript, a single quote must be escaped.</p>
+   * <p/>
+   * <p>Example:
+   * <pre>
+   * input string: He didn't say, "Stop!"
+   * output string: He didn\'t say, \"Stop!\"
+   * </pre>
+   * </p>
+   * 
+   * ref:
+   *  - https://github.com/eclipse/vert.x/blob/master/vertx-core/src/main/java/org/vertx/java/core/impl/StringEscapeUtils.java#L110
+   *
+   * @param str String to escape values in, may be null
+   * @return String with escaped values, <code>null</code> if null string input
+   */
   def escapeJavaScript(str: String, escapeSingleQuote: Boolean = true, escapeForwardSlash: Boolean = true): String = {
     val out = new StringWriter(str.length() * 2)
     str.foreach { ch =>

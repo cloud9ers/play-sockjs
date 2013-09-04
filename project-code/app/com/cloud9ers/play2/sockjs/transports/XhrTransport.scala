@@ -21,8 +21,8 @@ import org.codehaus.jackson.JsonParseException
 class XhrPollingActor(promise: Promise[String], session: ActorRef) extends Actor {
   session ! Session.Dequeue
   def receive: Receive = {
-    case Session.Message(m) =>
-      promise success ((if (m == "o") m else "a" + m) + "\n"); self ! PoisonPill //TODO: 'a' dirty solution 
+    case Session.OpenMessage => promise success SockJsFrames.OPEN_FRAME_NL; self ! PoisonPill
+    case Session.Message(m) => promise success s"a$m\n"; self ! PoisonPill
     case Session.HeartBeatFrame(h) => promise success h; self ! PoisonPill
   }
 }
@@ -36,8 +36,8 @@ class XhrStreamingActor(channel: Concurrent.Channel[Array[Byte]], session: Actor
     }
   }
   def receive: Receive = {
-    case Session.Message(m) =>
-      channel push (if (m == "o") m + "\n" else "a" + m + "\n").toArray.map(_.toByte); session ! Session.Dequeue //TODO: 'a' dirty solution 
+    case Session.OpenMessage => channel push SockJsFrames.OPEN_FRAME_NL.toArray.map(_.toByte); session ! Session.Dequeue
+    case Session.Message(m) => channel push s"a$m\n".toArray.map(_.toByte); session ! Session.Dequeue
     case Session.HeartBeatFrame(h) => channel push h.toArray.map(_.toByte); session ! Session.Dequeue
   }
 }
@@ -73,7 +73,6 @@ object XhrTransport extends Transport {
   def xhrSend(sessionId: String, f: RequestHeader => (Enumerator[JsValue], Iteratee[JsValue, Unit]) => Unit)(implicit request: Request[AnyContent]): Result =
     Async((sessionManager ? SessionManager.GetSession(sessionId)).map {
       case None => NotFound
-          NotFound
       case Some(ses: ActorRef) =>
         val (upEnumerator, upChannel) = Concurrent.broadcast[JsValue]
         val downIteratee = Iteratee.foreach[JsValue](userMsg => ses ! Session.Enqueue(userMsg))
