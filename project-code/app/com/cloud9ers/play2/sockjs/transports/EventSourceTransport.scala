@@ -24,38 +24,40 @@ class EventSourceActor(channel: Concurrent.Channel[String], session: ActorRef, m
     import scala.language.postfixOps
     context.system.scheduler.scheduleOnce(100 milliseconds) {
       channel push "\r\n"
-      session ! Session.Dequeue
+      session ! Session.Receive
     }
   }
 
   def receive: Receive = {
     case Session.OpenMessage =>
-      channel push s"data: ${SockJsFrames.OPEN_FRAME}\r\n\r\n"; session ! Session.Dequeue
-      
+      channel push s"data: ${SockJsFrames.OPEN_FRAME}\r\n\r\n"; session ! Session.Receive
+
     case Session.Message(m) =>
-      channel push s"data: a$m\r\n\r\n"
+      val msg = s"data: a$m\r\n\r\n"
+      println("EventSource ::<<<<<<<<< " + msg)
+      channel push msg
       if (m.length < maxBytesStreaming)
-        session ! Session.Dequeue
+        session ! Session.Receive
       else {
         channel.eofAndEnd()
         self ! PoisonPill
       }
 
-    case Session.HeartBeatFrame(h) => channel push s"data: $h\r\n\r\n"; session ! Session.Dequeue
+    case Session.HeartBeatFrame(h) => channel push s"data: $h\r\n\r\n"; session ! Session.Receive
   }
 }
 
 object EventSourceTransport extends Transport {
   val maxBytesStreaming = SockJsPlugin.current.maxBytesStreaming
 
-  def eventSource(sessionId: String)(implicit request: Request[AnyContent]) =
-    Async((sessionManager ? SessionManager.GetOrCreateSession(sessionId)).map { session =>
-      val (enum, channel) = Concurrent.broadcast[String]
-      val eventSourceActor = system.actorOf(Props(new EventSourceActor(channel, session.asInstanceOf[ActorRef], maxBytesStreaming)), s"eventsource.$sessionId")
-      (Ok stream enum.onDoneEnumerating(eventSourceActor ! PoisonPill))
-        .withHeaders(
-          CONTENT_TYPE -> "text/event-stream;charset=UTF-8",
-          CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-        .withHeaders(cors: _*)
-    })
+  def eventSource(sessionId: String, session: ActorRef)(implicit request: Request[AnyContent]) = {
+    val (enum, channel) = Concurrent.broadcast[String]
+    // FIXME: choose eventSource actor name
+    val eventSourceActor = system.actorOf(Props(new EventSourceActor(channel, session, maxBytesStreaming)), s"eventsource.$sessionId")
+    (Ok stream enum.onDoneEnumerating(eventSourceActor ! PoisonPill))
+      .withHeaders(
+        CONTENT_TYPE -> "text/event-stream;charset=UTF-8",
+        CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
+      .withHeaders(cors: _*)
+  }
 }

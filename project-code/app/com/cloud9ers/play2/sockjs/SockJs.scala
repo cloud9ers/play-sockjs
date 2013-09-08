@@ -1,8 +1,8 @@
 package com.cloud9ers.play2.sockjs
 
-import com.cloud9ers.play2.sockjs.transports.Transport
+import com.cloud9ers.play2.sockjs.transports.{ Transport, BaseTransport }
 import java.text.SimpleDateFormat
-import scala.concurrent.ExecutionContext.Implicits.global
+import play.api.libs.concurrent.Execution.Implicits._
 import scala.concurrent.Future
 import java.util.Date
 import scala.util.Random
@@ -26,7 +26,7 @@ trait SockJs { self: Controller =>
   lazy val prefix = SockJsPlugin.current.prefix
   lazy val maxLength: Int = SockJsPlugin.current.maxLength
   val websocketEnabled: Boolean = SockJsPlugin.current.websocketEnabled
-  
+
   lazy val sessionManager = SockJsPlugin.current.sessionManager
   implicit val timeout = Timeout(5.seconds)
 
@@ -44,31 +44,18 @@ trait SockJs { self: Controller =>
      * The same as Websocket.async
      * @param f - user function that takes the request header and return Future of the user's Iteratee and Enumerator
      */
-    def async(f: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])]): play.api.mvc.Action[AnyContent] = {
-      using { rh =>
-        val p = f(rh)
-        val upIteratee = Iteratee.flatten(p.map(_._1))
-        val downEnumerator = Enumerator.flatten(p.map(_._2))
-        (upIteratee, downEnumerator)
-      }
+    def async(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])]): play.api.mvc.Action[AnyContent] = Action {
+      implicit request =>
+        request.path match {
+          case greatingRoute() => Ok("Welcome to SockJS!\n").withHeaders(CONTENT_TYPE -> "text/plain;charset=UTF-8")
+          case iframeUrl(_) => handleIframe
+          case infoRoute() => info(websocket = websocketEnabled)
+          case infoDisabledWebsocketRoute() => info(websocket = false)
+          case sessionUrl() => handleSession(handler)
+          //          case closeSessionUrl(sessionId) => BaseTransport.closeSession(sessionId, handler)
+          case _ => NotFound("Notfound")
+        }
     }
-
-    /**
-     * returns Handler and passes a function that pipes the user Enumerator to the sockjs Iteratee
-     * and pipes the sockjs Enumerator to the user Iteratee
-     */
-    def using(f: RequestHeader => (Iteratee[JsValue, _], Enumerator[JsValue])): play.api.mvc.Action[AnyContent] =
-      handler { rh =>
-        (upEnumerator: Enumerator[JsValue], downIteratee: Iteratee[JsValue, Unit]) =>
-          // call the user function and holds the user's Iteratee (in) and Enumerator (out)
-          val (upIteratee, downEnumerator) = f(rh)
-
-          // pipes the msgs from the sockjs client to the user's Iteratee
-          upEnumerator |>> upIteratee
-
-          // pipes the msgs from the user's Enumerator to the sockjs client
-          downEnumerator |>> downIteratee
-      }
 
     /**
      * websocket
@@ -76,24 +63,28 @@ trait SockJs { self: Controller =>
     def websocket[String](f: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])]) =
       WebSocketTransport.websocket(f)(play.core.server.websocket.Frames.textFrame)
   }
-  /**
-   * Mainly passes the sockjs Enumerator/Iteratee to the function that associate them with the user's Iteratee/Enumerator respectively
-   * According to the transport, it creates the sockjs Enumerator/Iteratee and return Handler in each path
-   * calls enqueue/dequeue of the session to handle msg queue between send and receive
-   */
-  def handler(f: RequestHeader => (Enumerator[JsValue], Iteratee[JsValue, Unit]) => Unit) =
-    Action { implicit request =>
-      logger.debug(request.path)
-      request.path match {
-        case greatingRoute() => Ok("Welcome to SockJS!\n").withHeaders(CONTENT_TYPE -> "text/plain;charset=UTF-8")
-        case iframeUrl(_) => handleIframe
-        case infoRoute() => info(websocket = websocketEnabled)
-        case infoDisabledWebsocketRoute() => info(websocket = false)
-        case sessionUrl() => handleSession(f)
-        case closeSessionUrl(sessionId) => closeSession(f)
-        case _ => NotFound("Notfound")
+
+  def handleSession(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])])(implicit request: Request[AnyContent]): Result = {
+    val pathList = request.path.split("/").reverse
+    val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
+    val futureSession = {
+      if (!transport.toLowerCase.endsWith("send")) sessionManager ? SessionManager.GetOrCreateSession(sessionId, handler, request)
+      else sessionManager ? SessionManager.GetSession(sessionId)
+    }
+    Async {
+      futureSession.mapTo[Option[ActorRef]] map {
+        case None => NotFound
+        case Some(session) => transport match {
+          case Transport.XHR 			⇒ XhrTransport.xhrPolling(sessionId, session)
+          case Transport.XHR_STREAMING 	⇒ XhrTransport.xhrStreaming(sessionId, session)
+          case Transport.XHR_SEND 		⇒ XhrTransport.xhrSend(sessionId, session)
+          case Transport.JSON_P 		⇒ JsonPTransport.jsonpPolling(sessionId, session)
+          case Transport.JSON_P_SEND 	⇒ JsonPTransport.jsonpSend(sessionId, session)
+          case Transport.EVENT_SOURCE 	⇒ EventSourceTransport.eventSource(sessionId, session)
+        }
       }
     }
+  }
 
   def handleIframe(implicit request: Request[AnyContent]) =
     if (request.headers.toMap.contains(IF_NONE_MATCH)) {
@@ -105,24 +96,6 @@ trait SockJs { self: Controller =>
         EXPIRES -> (new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz"))
           .format(new Date(System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000))))
     }
-
-  def handleSession(f: RequestHeader => (Enumerator[JsValue], Iteratee[JsValue, Unit]) => Unit)(implicit request: Request[AnyContent]): Result = {
-    val pathList = request.path.split("/").reverse
-    val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
-    transport match {
-      case Transport.XHR			⇒ XhrTransport.xhrPolling(sessionId)
-      case Transport.XHR_STREAMING	⇒ XhrTransport.xhrStreaming(sessionId)
-      case Transport.XHR_SEND		⇒ XhrTransport.xhrSend(sessionId, f)
-      case Transport.JSON_P			⇒ JsonPTransport.jsonpPolling(sessionId)
-      case Transport.JSON_P_SEND	⇒ JsonPTransport.jsonpSend(sessionId, f)
-      case Transport.EVENT_SOURCE	⇒ EventSourceTransport.eventSource(sessionId)
-    }
-  }
-
-  def closeSession(f: RequestHeader => (Enumerator[JsValue], Iteratee[JsValue, Unit]) => Unit)(implicit request: Request[AnyContent]): Result = {
-    //TODO: implement close session here
-    Ok("closed") //dummy implementation should be removed later
-  }
 
   def info(websocket: Boolean = true)(implicit request: Request[AnyContent]) = request.method match {
     case "GET" =>

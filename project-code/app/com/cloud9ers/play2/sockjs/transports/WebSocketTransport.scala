@@ -14,9 +14,9 @@ import com.cloud9ers.play2.sockjs.JsonCodec
 
 @deprecated("","")
 class WebsocketActor[A](channel: Concurrent.Channel[A], session: ActorRef) extends Actor {
-  session ! Session.Dequeue
+  session ! Session.Receive
   def receive = {
-    case Session.Message(m) => channel push m.asInstanceOf[A]; session ! Session.Dequeue
+    case Session.Message(m) => channel push m.asInstanceOf[A]; session ! Session.Receive
   }
 }
 

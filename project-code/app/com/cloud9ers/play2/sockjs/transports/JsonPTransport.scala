@@ -3,7 +3,7 @@ package com.cloud9ers.play2.sockjs.transports
 import com.cloud9ers.play2.sockjs.{ SockJsPlugin, Session, SessionManager }
 import play.api.mvc.{ RequestHeader, Request, AnyContent }
 import play.api.libs.iteratee.{ Iteratee, Enumerator }
-import scala.concurrent.ExecutionContext.Implicits.global
+import play.api.libs.concurrent.Execution.Implicits._
 import play.api.Play.current
 import akka.pattern.ask
 import scala.concurrent.duration._
@@ -22,7 +22,7 @@ import com.cloud9ers.play2.sockjs.JsonCodec
 import org.codehaus.jackson.JsonParseException
 
 class JsonpPollingActor(promise: Promise[String], session: ActorRef) extends Actor {
-  session ! Session.Dequeue
+  session ! Session.Receive
   def receive: Receive = {
     case Session.Message(m) =>
       promise success ((if (m == "o") "" else "a") + m); self ! PoisonPill //FIXIME: Dirty solution in JsonP for append 'a'
@@ -32,12 +32,10 @@ class JsonpPollingActor(promise: Promise[String], session: ActorRef) extends Act
 
 object JsonPTransport extends Transport {
 
-  def jsonpPolling(sessionId: String)(implicit request: Request[AnyContent]) = Async(
+  def jsonpPolling(sessionId: String, session: ActorRef)(implicit request: Request[AnyContent]) = Async(
     request.queryString.get("c").map { callback =>
       val promise = Promise[String]()
-      (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
-        .map(session =>
-          system.actorOf(Props(new JsonpPollingActor(promise, session.asInstanceOf[ActorRef])), s"xhr-polling.$sessionId"))
+        system.actorOf(Props(new JsonpPollingActor(promise, session)), s"xhr-polling.$sessionId")
       promise.future.map(m =>
         Ok(s"""${callback.reduceLeft(_ + _)}("${escapeJavaScript(m)}");\r\n""") //callback(\\"m\\");\r\n //FIXME: skip '"'
           .withHeaders(
@@ -46,47 +44,40 @@ object JsonPTransport extends Transport {
           .withHeaders(cors: _*))
     }.getOrElse(Future(InternalServerError("\"callback\" parameter required\n"))))
 
-  def jsonpSend(sessionId: String, f: RequestHeader => (Enumerator[JsValue], Iteratee[JsValue, Unit]) => Unit)(implicit request: Request[AnyContent]): Result =
-    Async(
-      request.contentType.map(_.toLowerCase match {
-        case "application/x-www-form-urlencoded" =>
-          request.body.asFormUrlEncoded.get.get("d").getOrElse(Nil) match { //TODO: clean asFormUrlEncoded in jsonP
-            case Nil =>
-              Failure(new Exception("Payload expected."))
-            case chars =>
-              Success(chars.reduceLeft(_ + _))
-          }
-        case "text/plain" =>
-          request.body.asText match {
-            case None => Failure(new Exception("Payload expected."))
-            case Some(body) =>
-              try Success(URLDecoder.decode(body, "UTF-8"))
-              catch { case e: UnsupportedEncodingException => Failure(new Exception("No UTF-8!")) }
-          }
-        case _ => Failure(new Exception("Invalid Content-type"))
+  def jsonpSend(sessionId: String, session: ActorRef)(implicit request: Request[AnyContent]): Result =
+    request.contentType.map(_.toLowerCase match {
+      case "application/x-www-form-urlencoded" =>
+        request.body.asFormUrlEncoded.get.get("d").getOrElse(Nil) match { //TODO: clean asFormUrlEncoded in jsonP
+          case Nil =>
+            Failure(new Exception("Payload expected."))
+          case chars =>
+            Success(chars.reduceLeft(_ + _))
+        }
+      case "text/plain" =>
+        request.body.asText match {
+          case None => Failure(new Exception("Payload expected."))
+          case Some(body) =>
+            try Success(URLDecoder.decode(body, "UTF-8"))
+            catch { case e: UnsupportedEncodingException => Failure(new Exception("No UTF-8!")) }
+        }
+      case _ => Failure(new Exception("Invalid Content-type"))
 
-      }).map {
-        case Success(message) =>
-          (sessionManager ? SessionManager.GetSession(sessionId)).map {
-            case None => NotFound
-            case Some(ses: ActorRef) =>
-              val (upEnumerator, upChannel) = Concurrent.broadcast[JsValue]
-              val downIteratee = Iteratee.foreach[JsValue](userMsg => ses ! Session.Enqueue(userMsg))
-              f(request)(upEnumerator, downIteratee)
-              if (message == "")
-                InternalServerError("Payload expected.")
-              else
-                try {
-                  upChannel push JsonCodec.decodeJson(message)
-                  Ok("ok")
-                    .withHeaders(
-                      CONTENT_TYPE -> "text/plain; charset=UTF-8",
-                      CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-                    .withHeaders(cors: _*)
-                } catch {
-                  case e: JsonParseException => InternalServerError("Broken JSON encoding.")
-                }
-            case Failure(e) => InternalServerError(e.getMessage)
+    }).map {
+      case Success(message) =>
+        if (message == "")
+          InternalServerError("Payload expected.")
+        else
+          try {
+            session ! Session.Send(JsonCodec.decodeJson(message))
+            println(s"JsonPSend :: ___>>>>>--" + JsonCodec.decodeJson(message))
+            Ok("ok")
+              .withHeaders(
+                CONTENT_TYPE -> "text/plain; charset=UTF-8",
+                CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
+              .withHeaders(cors: _*)
+          } catch {
+            case e: JsonParseException => InternalServerError("Broken JSON encoding.")
           }
-      }.getOrElse(Future(InternalServerError("Invalid Content-Type"))))
+      case Failure(e) => InternalServerError(e.getMessage)
+    }.getOrElse(InternalServerError("Invalid Content-Type"))
 }
