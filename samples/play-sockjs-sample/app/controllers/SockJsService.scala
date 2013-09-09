@@ -38,7 +38,6 @@ object SockJsService extends Controller with SockJs {
     val (downEnumerator, downChannel) = Concurrent.broadcast[JsValue]
     val upIteratee = Iteratee.foreach[JsValue] { msg => downChannel push msg; println(s"handler ::::::::::: message: $msg") }
     Promise.pure(upIteratee, downEnumerator)
-
   }
 
   def sockJsHandler = SockJs.async(handler) //TODO: Try to make it a single function and pass the complementary path instead

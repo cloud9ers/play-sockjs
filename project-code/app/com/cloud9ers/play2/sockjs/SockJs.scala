@@ -67,10 +67,11 @@ trait SockJs { self: Controller =>
   def handleSession(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])])(implicit request: Request[AnyContent]): Result = {
     val pathList = request.path.split("/").reverse
     val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
-    val futureSession = {
+    val futureSession: Future[Any] = {
       if (!transport.toLowerCase.endsWith("send")) sessionManager ? SessionManager.GetOrCreateSession(sessionId, handler, request)
       else sessionManager ? SessionManager.GetSession(sessionId)
     }
+    
     Async {
       futureSession.mapTo[Option[ActorRef]] map {
         case None => NotFound

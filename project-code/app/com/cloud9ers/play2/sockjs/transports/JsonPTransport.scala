@@ -20,12 +20,15 @@ import play.api.libs.json.JsValue
 import com.cloud9ers.play2.sockjs.StringEscapeUtils.escapeJavaScript
 import com.cloud9ers.play2.sockjs.JsonCodec
 import org.codehaus.jackson.JsonParseException
+import scala.util.Try
 
 class JsonpPollingActor(promise: Promise[String], session: ActorRef) extends Actor {
   session ! Session.Receive
   def receive: Receive = {
+    case Session.OpenMessage =>
+      promise success SockJsFrames.OPEN_FRAME; self ! PoisonPill
     case Session.Message(m) =>
-      promise success ((if (m == "o") "" else "a") + m); self ! PoisonPill //FIXIME: Dirty solution in JsonP for append 'a'
+      promise success s"a$m"; self ! PoisonPill
     case Session.HeartBeatFrame(h) => promise success h; self ! PoisonPill
   }
 }
@@ -35,9 +38,9 @@ object JsonPTransport extends Transport {
   def jsonpPolling(sessionId: String, session: ActorRef)(implicit request: Request[AnyContent]) = Async(
     request.queryString.get("c").map { callback =>
       val promise = Promise[String]()
-        system.actorOf(Props(new JsonpPollingActor(promise, session)), s"xhr-polling.$sessionId")
+      system.actorOf(Props(new JsonpPollingActor(promise, session)), s"xhr-polling.$sessionId")
       promise.future.map(m =>
-        Ok(s"""${callback.reduceLeft(_ + _)}("${escapeJavaScript(m)}");\r\n""") //callback(\\"m\\");\r\n //FIXME: skip '"'
+        Ok(s"""${callback.reduceLeft(_ + _)}("${escapeJavaScript(m)}");\r\n""") // callback(\\"m\\");\r\n //FIXME: skip '"'
           .withHeaders(
             CONTENT_TYPE -> "application/javascript;charset=UTF-8",
             CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
@@ -45,39 +48,30 @@ object JsonPTransport extends Transport {
     }.getOrElse(Future(InternalServerError("\"callback\" parameter required\n"))))
 
   def jsonpSend(sessionId: String, session: ActorRef)(implicit request: Request[AnyContent]): Result =
-    request.contentType.map(_.toLowerCase match {
-      case "application/x-www-form-urlencoded" =>
-        request.body.asFormUrlEncoded.get.get("d").getOrElse(Nil) match { //TODO: clean asFormUrlEncoded in jsonP
-          case Nil =>
-            Failure(new Exception("Payload expected."))
-          case chars =>
-            Success(chars.reduceLeft(_ + _))
-        }
-      case "text/plain" =>
-        request.body.asText match {
-          case None => Failure(new Exception("Payload expected."))
-          case Some(body) =>
-            try Success(URLDecoder.decode(body, "UTF-8"))
-            catch { case e: UnsupportedEncodingException => Failure(new Exception("No UTF-8!")) }
-        }
-      case _ => Failure(new Exception("Invalid Content-type"))
+    jsonpResult { message =>
+      try {
+        session ! Session.Send(JsonCodec.decodeJson(message))
+        println(s"JsonPSend :: ___>>>>>--" + JsonCodec.decodeJson(message))
+        Ok("ok")
+          .withHeaders(
+            CONTENT_TYPE -> "text/plain; charset=UTF-8",
+            CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
+          .withHeaders(cors: _*)
+      } catch {
+        case e: JsonParseException => InternalServerError("Broken JSON encoding.")
+      }
+    }
 
-    }).map {
-      case Success(message) =>
-        if (message == "")
-          InternalServerError("Payload expected.")
-        else
-          try {
-            session ! Session.Send(JsonCodec.decodeJson(message))
-            println(s"JsonPSend :: ___>>>>>--" + JsonCodec.decodeJson(message))
-            Ok("ok")
-              .withHeaders(
-                CONTENT_TYPE -> "text/plain; charset=UTF-8",
-                CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-              .withHeaders(cors: _*)
-          } catch {
-            case e: JsonParseException => InternalServerError("Broken JSON encoding.")
-          }
-      case Failure(e) => InternalServerError(e.getMessage)
-    }.getOrElse(InternalServerError("Invalid Content-Type"))
+  def jsonpResult(f: String => Result)(implicit request: Request[AnyContent]): Result =
+    if (request.contentType.map(_.toLowerCase).exists(ct => ct.startsWith("application/x-www-form-urlencoded") || ct.startsWith("text/plain")))
+      jsonpBody.map(body => f(body))
+        .getOrElse(InternalServerError("Payload expected."))
+    else InternalServerError("Invalid Content-Type")
+
+  def jsonpBody(implicit request: Request[AnyContent]): Option[String] =
+    request.body.asFormUrlEncoded.flatMap(formBody => formBody.get("d").map(seq => seq.reduceLeft(_ + _)))
+      .orElse(request.body.asText
+        .map(textBody => URLDecoder.decode(textBody, "UTF-8"))
+        .filter(decodedBody => decodedBody.size > 2 && decodedBody.startsWith("d="))
+        .map(decodedBody => decodedBody.substring(2)))
 }
