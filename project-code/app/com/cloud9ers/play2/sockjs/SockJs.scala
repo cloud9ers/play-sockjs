@@ -19,6 +19,8 @@ import akka.actor.ActorRef
 import com.cloud9ers.play2.sockjs.transports.{ WebSocketTransport, XhrTransport, EventSourceTransport, JsonPTransport }
 import play.api.libs.json.JsValue
 
+case class SessionResult(session: Option[ActorRef], result: Result)
+
 trait SockJs { self: Controller =>
   lazy val logger = SockJsPlugin.current.logger
   lazy val system = SockJsPlugin.current.system
@@ -51,8 +53,12 @@ trait SockJs { self: Controller =>
           case iframeUrl(_) => handleIframe
           case infoRoute() => info(websocket = websocketEnabled)
           case infoDisabledWebsocketRoute() => info(websocket = false)
-          case sessionUrl() => handleSession(handler)
-          //          case closeSessionUrl(sessionId) => BaseTransport.closeSession(sessionId, handler)
+          case sessionUrl() => Async(futureSession(handler).map(session => handleSession(session)))
+          case closeSessionUrl(sessionId) => Async(futureSession(handler).map { session =>
+            val r = handleSession(session)
+            closeSession(session)
+            r
+          })
           case _ => NotFound("Notfound")
         }
     }
@@ -64,28 +70,36 @@ trait SockJs { self: Controller =>
       WebSocketTransport.websocket(f)(play.core.server.websocket.Frames.textFrame)
   }
 
-  def handleSession(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])])(implicit request: Request[AnyContent]): Result = {
+  def futureSession(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])])(implicit request: Request[AnyContent]): Future[Option[ActorRef]] = {
     val pathList = request.path.split("/").reverse
     val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
     val futureSession: Future[Any] = {
       if (!transport.toLowerCase.endsWith("send")) sessionManager ? SessionManager.GetOrCreateSession(sessionId, handler, request)
       else sessionManager ? SessionManager.GetSession(sessionId)
     }
-    
-    Async {
-      futureSession.mapTo[Option[ActorRef]] map {
-        case None => NotFound
-        case Some(session) => transport match {
-          case Transport.XHR 			⇒ XhrTransport.xhrPolling(sessionId, session)
-          case Transport.XHR_STREAMING 	⇒ XhrTransport.xhrStreaming(sessionId, session)
-          case Transport.XHR_SEND 		⇒ XhrTransport.xhrSend(sessionId, session)
-          case Transport.JSON_P 		⇒ JsonPTransport.jsonpPolling(sessionId, session)
-          case Transport.JSON_P_SEND 	⇒ JsonPTransport.jsonpSend(sessionId, session)
-          case Transport.EVENT_SOURCE 	⇒ EventSourceTransport.eventSource(sessionId, session)
-        }
+    futureSession.mapTo[Option[ActorRef]]
+  }
+
+  def handleSession(session: Option[ActorRef])(implicit request: Request[AnyContent]): Result = {
+    val pathList = request.path.split("/").reverse
+    val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
+    session match {
+      case None =>
+        logger.debug(s"Session didn't found, sessionId: $sessionId, transport: $transport, serverId: $serverId")
+        NotFound
+      case Some(session) => transport match {
+        case Transport.XHR ⇒ XhrTransport.xhrPolling(sessionId, session)
+        case Transport.XHR_STREAMING ⇒ XhrTransport.xhrStreaming(sessionId, session)
+        case Transport.XHR_SEND ⇒ XhrTransport.xhrSend(sessionId, session)
+        case Transport.JSON_P ⇒ JsonPTransport.jsonpPolling(sessionId, session)
+        case Transport.JSON_P_SEND ⇒ JsonPTransport.jsonpSend(sessionId, session)
+        case Transport.EVENT_SOURCE ⇒ EventSourceTransport.eventSource(sessionId, session)
       }
     }
   }
+
+  def closeSession(session: Option[ActorRef])(implicit request: Request[AnyContent]): Unit =
+    for (s <- session) { s ! Session.Close(3000,"Go away!"); s }
 
   def handleIframe(implicit request: Request[AnyContent]) =
     if (request.headers.toMap.contains(IF_NONE_MATCH)) {

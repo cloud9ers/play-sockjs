@@ -22,11 +22,17 @@ class XhrPollingActor(promise: Promise[String], session: ActorRef) extends Actor
   session ! Session.Receive
   def receive: Receive = {
     case Session.OpenMessage =>
-      promise success SockJsFrames.OPEN_FRAME_NL; self ! PoisonPill
+      println("OOOOOOOOOOPPPPPPPPPPEN")
+      sendFrame(SockJsFrames.OPEN_FRAME); self ! PoisonPill
     case Session.Message(m) =>
-      promise success s"a$m\n"; self ! PoisonPill
-    case Session.HeartBeatFrame(h) => promise success h; self ! PoisonPill
+      sendFrame("a" + m); self ! PoisonPill
+    case Session.HeartBeatFrame(h) => sendFrame(h); self ! PoisonPill
+    case Session.Close(code, reason) =>
+      sendFrame(SockJsFrames.closingFrame(code, reason))
+      self ! PoisonPill
+      println("XXXXXXX Xhr closed")
   }
+  def sendFrame(msg: String) = promise success msg + "\n"
 }
 
 class XhrStreamingActor(channel: Concurrent.Channel[Array[Byte]], session: ActorRef) extends Actor {
@@ -37,21 +43,29 @@ class XhrStreamingActor(channel: Concurrent.Channel[Array[Byte]], session: Actor
       session ! Session.Receive
     }
   }
+
   def receive: Receive = {
     case Session.OpenMessage =>
-      channel push SockJsFrames.OPEN_FRAME_NL.toArray.map(_.toByte); session ! Session.Receive
+      sendFrame(SockJsFrames.OPEN_FRAME); session ! Session.Receive
     case Session.Message(m) =>
       println("XhrStreaming ::<<<<<<<<< " + m)
-      channel push s"a$m\n".toArray.map(_.toByte); session ! Session.Receive
-    case Session.HeartBeatFrame(h) => channel push h.toArray.map(_.toByte); session ! Session.Receive
+      sendFrame(s"a$m"); session ! Session.Receive
+    case Session.HeartBeatFrame(h) =>
+      sendFrame(h); session ! Session.Receive
+    case Session.Close(code, reason) =>
+      sendFrame(SockJsFrames.closingFrame(code, reason))
+      self ! PoisonPill
+      println("XXXXXXX XhrStreaming closed")
   }
+
+  def sendFrame(msg: String) = channel push s"$msg\n".toArray.map(_.toByte)
 }
 
 object XhrTransport extends Transport {
 
   def xhrPolling(sessionId: String, session: ActorRef)(implicit request: Request[AnyContent]) = Async {
     val promise = Promise[String]()
-    system.actorOf(Props(new XhrPollingActor(promise, session.asInstanceOf[ActorRef])), s"xhr-polling.$sessionId")
+    system.actorOf(Props(new XhrPollingActor(promise, session)), s"xhr-polling.$sessionId")
     promise.future.map { m =>
       Ok(m.toString)
         .withHeaders(

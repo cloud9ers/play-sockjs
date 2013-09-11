@@ -33,8 +33,8 @@ class Transport extends Controller with SockJs {
 }
 
 object BaseTransport extends Transport {
-//  def closeSession(session: Future[ActorRef])(implicit request: Request[AnyContent]): Result =
-//    {
+  def closeSession(sessionId: String, session: ActorRef)(implicit request: Request[AnyContent]): Result =
+    {
 //      Async((sessionManager ? SessionManager.GetOrCreateSession(sessionId)).map {
 //        case None => NotFound
 //        case Some(ses: ActorRef) =>
@@ -43,8 +43,8 @@ object BaseTransport extends Transport {
 //          f(request)(upEnumerator, downIteratee)
 //          upChannel.eofAndEnd()
 //          ses ! Session.Close(3000, "Go Away!")
-//
-//          Ok //FIXME: close response
+
+          Ok //FIXME: close response
 //      })
-//    }
+    }
 }

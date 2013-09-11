@@ -18,6 +18,7 @@ class Session(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator
   val logger = Logging(context.system, this)
   var heartBeatTask: Option[Cancellable] = None
   val queue = context.actorOf(Props(new MsgQueue()), "queue")
+  var close = Session.Close(3000, "Go away!")
 
   implicit val timeout = Timeout(5.seconds)
   implicit val executionContext = context.system.dispatcher
@@ -49,8 +50,22 @@ class Session(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator
         case msg: JsArray => msg.value.foreach(m => upChannel push m)
         case msg: JsValue => upChannel push msg
       }
-    case Session.Receive => queue ! MsgQueue.DequeueOrBind(sender)
+    
+    case Session.Receive =>
+      queue ! MsgQueue.DequeueOrBind(sender)
+    
     case Session.HeartBeatFrame => //TODO: re-implement heart beat
+    
+    case close @ Session.Close(code, text) =>
+      context become closing
+      this.close = close
+      queue ! close
+      upChannel.eofAndEnd()
+  }
+  
+  def closing: Receive = {
+    case Session.Receive => sender ! close
+    case "writerClosed" => self ! PoisonPill
   }
 
   def startHeartBeat() = { //TODO: heartbeat need test
@@ -85,9 +100,9 @@ class MsgQueue extends Actor {
   }
 
   def receive = {
-    case MsgQueue.EnqueueOrWrite(msg) =>
-      queue += msg; for (w <- writer) write(w)
+    case MsgQueue.EnqueueOrWrite(msg) => queue += msg; for (w <- writer) write(w)
     case MsgQueue.DequeueOrBind(w) => writer = Some(w); if (!queue.isEmpty) write(w)
+    case close @ Session.Close(code, reason) =>  for (w <- writer) w ! close; self ! PoisonPill
   }
 }
 object MsgQueue {
