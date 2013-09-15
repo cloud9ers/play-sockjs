@@ -1,12 +1,12 @@
 package com.cloud9ers.play2.sockjs.transports
 
-import com.cloud9ers.play2.sockjs.SockJs
-import play.api.mvc.Controller
-import akka.actor.{ Actor, ActorRef, PoisonPill, Cancellable, Props }
-import com.cloud9ers.play2.sockjs.Session
+import scala.concurrent.duration.DurationInt
+
+import com.cloud9ers.play2.sockjs.{Session, SockJs, SockJsFrames}
+
+import akka.actor.{Actor, ActorRef, Cancellable, PoisonPill, Props, actorRef2Scala}
 import akka.event.Logging
-import scala.concurrent.duration._
-import com.cloud9ers.play2.sockjs.SockJsFrames
+import play.api.mvc.Controller
 
 object Transport {
   val WEBSOCKET = "websocket"

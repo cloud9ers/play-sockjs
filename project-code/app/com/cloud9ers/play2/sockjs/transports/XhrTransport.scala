@@ -1,23 +1,17 @@
 package com.cloud9ers.play2.sockjs.transports
 
-import com.cloud9ers.play2.sockjs.{ SockJsPlugin, Session, SessionManager }
-import play.api.mvc.{ RequestHeader, Request }
-import play.api.libs.iteratee.{ Iteratee, Enumerator }
-import play.api.libs.concurrent.Execution.Implicits._
-import play.api.Play.current
-import akka.pattern.ask
-import scala.concurrent.duration._
-import akka.util.Timeout
-import play.api.libs.iteratee.Concurrent
-import scala.concurrent.{ Promise, Future }
-import akka.actor.{ Actor, ActorRef, Props, PoisonPill }
-import com.cloud9ers.play2.sockjs.SockJsFrames
-import play.api.mvc.Result
-import play.api.mvc.AnyContent
-import play.api.libs.json.JsValue
-import com.cloud9ers.play2.sockjs.JsonCodec
+import scala.Array.canBuildFrom
+import scala.concurrent.Promise
+import scala.concurrent.duration.DurationInt
+
 import org.codehaus.jackson.JsonParseException
-import akka.event.Logging
+
+import com.cloud9ers.play2.sockjs.{JsonCodec, Session, SockJsFrames}
+
+import akka.actor.{ActorRef, PoisonPill, Props, actorRef2Scala}
+import play.api.libs.concurrent.Execution.Implicits.defaultContext
+import play.api.libs.iteratee.Concurrent
+import play.api.mvc.{AnyContent, Request, Result}
 
 class XhrPollingActor(promise: Promise[String], session: ActorRef) extends TransportActor(session, Transport.XHR) {
   session ! Session.Register

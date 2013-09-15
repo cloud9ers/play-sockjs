@@ -1,18 +1,18 @@
 package com.cloud9ers.play2.sockjs
 
-import play.api.libs.iteratee.{ Concurrent, Iteratee, Enumerator, Input }
-import scala.concurrent.{ Promise, Future }
-import akka.actor.{ Actor, ActorRef, Props, Cancellable, PoisonPill }
+import scala.concurrent.Future
+import scala.concurrent.duration.{DurationInt, DurationLong}
+
+import akka.actor.{Actor, ActorRef, Cancellable, PoisonPill, actorRef2Scala}
 import akka.event.Logging
-import scala.concurrent.duration._
-import play.api.libs.json.{ JsValue, JsArray }
-import play.api.mvc.{ Request, AnyContent, RequestHeader }
-import play.api.libs.json.JsArray
+import play.api.libs.iteratee.{Concurrent, Enumerator, Input, Iteratee}
+import play.api.libs.json.{JsArray, JsValue}
+import play.api.mvc.{AnyContent, Request, RequestHeader}
 
 /**
  * Session class to queue messages over multiple connection like xhr and xhr_send
  */
-class Session(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])], request: Request[AnyContent], heartBeatPeriod: Long) extends Actor {
+class Session(handler: RequestHeader ⇒ Future[(Iteratee[JsValue, _], Enumerator[JsValue])], request: Request[AnyContent], heartBeatPeriod: Long) extends Actor {
   val logger = Logging(context.system, this)
   val pendingWrites = scala.collection.mutable.Queue[JsValue]()
   var transportListener: Option[ActorRef] = None
@@ -26,7 +26,7 @@ class Session(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator
   val downEnumerator = Enumerator.flatten(p.map(_._2))
 
   val (upEnumerator, upChannel) = Concurrent.broadcast[JsValue]
-  val downIteratee = Iteratee.foreach[JsValue](msg => self ! Session.Write(msg))
+  val downIteratee = Iteratee.foreach[JsValue](msg ⇒ self ! Session.Write(msg))
 
   upEnumerator |>> upIteratee
   downEnumerator |>> downIteratee
@@ -36,26 +36,26 @@ class Session(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator
   def receive = connecting orElse timeout
 
   def timeout: Receive = {
-    case Session.Timeout => doClose()
+    case Session.Timeout ⇒ doClose()
   }
 
   def connecting: Receive = {
-    case Session.Register =>
+    case Session.Register ⇒
       sender ! Session.OpenMessage
       context become (open orElse timeout)
       startHeartBeat()
   }
 
   def open: Receive = {
-    case Session.Register => register(sender)
-    case Session.Send(msgs) => handleMessages(msgs)
-    case Session.Write(msg) => write(msg)
-    case h @ Session.HeartBeat => for (tl <- transportListener) tl ! h
-    case c: Session.Close => close(c)
+    case Session.Register ⇒ register(sender)
+    case Session.Send(msgs) ⇒ handleMessages(msgs)
+    case Session.Write(msg) ⇒ write(msg)
+    case h @ Session.HeartBeat ⇒ for (tl ← transportListener) tl ! h
+    case c: Session.Close ⇒ close(c)
   }
 
   def closed: Receive = {
-    case Session.Register => sender ! Session.Close(3000, "Go away!")
+    case Session.Register ⇒ sender ! Session.Close(3000, "Go away!")
   }
 
   def register(transport: ActorRef) {
@@ -71,18 +71,18 @@ class Session(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator
 
   def handleMessages(msgs: JsValue) {
     msgs match {
-      case msg: JsArray => msg.value.foreach(m => upChannel push m)
-      case msg: JsValue => upChannel push msg
+      case msg: JsArray ⇒ msg.value.foreach(m ⇒ upChannel push m)
+      case msg: JsValue ⇒ upChannel push msg
     }
   }
 
   def write(msg: JsValue) {
     pendingWrites += msg
-    for (tl <- transportListener) writePendingMessages(tl)
+    for (tl ← transportListener) writePendingMessages(tl)
   }
 
   def writePendingMessages(tl: ActorRef) {
-    val ms = pendingWrites.dequeueAll(_ => true).toList
+    val ms = pendingWrites.dequeueAll(_ ⇒ true).toList
     tl ! Session.Message("a" + JsonCodec.encodeJson(JsArray(ms)))
     resetListener()
     logger.debug(s"writePendingMessages: tl: $tl, pendingWrites: pendingWrites")
@@ -92,7 +92,7 @@ class Session(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator
     logger.debug(s"Session is closing, code: ${closeMsg.code}, reason: ${closeMsg.reason}")
     context become (closed orElse timeout)
     upChannel push Input.EOF
-    for (tl <- transportListener) tl ! closeMsg
+    for (tl ← transportListener) tl ! closeMsg
   }
 
   def resetListener() {
@@ -102,7 +102,7 @@ class Session(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator
 
   def setTimer() {
     import scala.language.postfixOps
-    for (t <- timer) t.cancel()
+    for (t ← timer) t.cancel()
     timer = Some(context.system.scheduler.scheduleOnce(6 seconds, self, Session.Timeout)) // The only case where the session is actually closed
   }
 
@@ -114,9 +114,9 @@ class Session(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator
   def doClose() {
     logger.debug("Session is going to shutdown")
     self ! PoisonPill
-    for (tl <- transportListener) tl ! PoisonPill
-    for (h <- heartBeatTask) h.cancel()
-    for (t <- timer) t.cancel()
+    for (tl ← transportListener) tl ! PoisonPill
+    for (h ← heartBeatTask) h.cancel()
+    for (t ← timer) t.cancel()
   }
 }
 
@@ -129,24 +129,4 @@ object Session {
   case object HeartBeat
   case class Write(msg: JsValue)
   object Timeout
-}
-
-//TODO: Organization: move SessionManager to a separate file
-class SessionManager(heartBeatPeriod: Long) extends Actor {
-  type Handler = RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])]
-  def getSession(sessionId: String): Option[ActorRef] = context.child(sessionId)
-  def createSession(sessionId: String, handler: Handler, request: Request[AnyContent]): ActorRef =
-    context.actorOf(Props(new Session(handler, request, heartBeatPeriod)), sessionId)
-  def receive = {
-    case SessionManager.GetSession(sessionId) =>
-      sender ! getSession(sessionId)
-    case SessionManager.GetOrCreateSession(sessionId, handler, request) =>
-      sender ! getSession(sessionId).orElse(Some(createSession(sessionId, handler, request)))
-  }
-}
-
-object SessionManager {
-  type Handler = RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])]
-  case class GetOrCreateSession(sessionId: String, handler: Handler, request: Request[AnyContent])
-  case class GetSession(sessionId: String)
 }

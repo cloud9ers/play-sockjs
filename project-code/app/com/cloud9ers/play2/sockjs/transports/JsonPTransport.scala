@@ -1,26 +1,17 @@
 package com.cloud9ers.play2.sockjs.transports
 
-import com.cloud9ers.play2.sockjs.{ SockJsPlugin, Session, SessionManager }
-import play.api.mvc.{ RequestHeader, Request, AnyContent }
-import play.api.libs.iteratee.{ Iteratee, Enumerator }
-import play.api.libs.concurrent.Execution.Implicits._
-import play.api.Play.current
-import akka.pattern.ask
-import scala.concurrent.duration._
-import akka.util.Timeout
-import play.api.libs.iteratee.Concurrent
-import scala.concurrent.{ Promise, Future }
-import akka.actor.{ Actor, ActorRef, Props, PoisonPill }
-import com.cloud9ers.play2.sockjs.SockJsFrames
-import play.api.mvc.Result
-import scala.util.{ Success, Failure }
 import java.net.URLDecoder
-import java.io.UnsupportedEncodingException
-import play.api.libs.json.JsValue
-import com.cloud9ers.play2.sockjs.StringEscapeUtils.escapeJavaScript
-import com.cloud9ers.play2.sockjs.JsonCodec
+
+import scala.concurrent.{Future, Promise}
+
 import org.codehaus.jackson.JsonParseException
-import scala.util.Try
+
+import com.cloud9ers.play2.sockjs.{JsonCodec, Session}
+import com.cloud9ers.play2.sockjs.StringEscapeUtils.escapeJavaScript
+
+import akka.actor.{ActorRef, Props, actorRef2Scala}
+import play.api.libs.concurrent.Execution.Implicits.defaultContext
+import play.api.mvc.{AnyContent, Request, Result}
 
 class JsonpPollingActor(promise: Promise[String], session: ActorRef) extends TransportActor(session, Transport.JSON_P) {
   session ! Session.Register

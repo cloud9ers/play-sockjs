@@ -1,20 +1,13 @@
 package com.cloud9ers.play2.sockjs.transports
 
-import com.cloud9ers.play2.sockjs.{ SockJsPlugin, Session, SessionManager }
-import play.api.mvc.{ RequestHeader, Request }
+import scala.concurrent.duration.DurationInt
+
+import com.cloud9ers.play2.sockjs.{ Session, SockJsPlugin }
+
+import akka.actor.{ ActorRef, PoisonPill, Props, actorRef2Scala }
 import play.api.Play.current
-import akka.pattern.ask
-import scala.concurrent.duration._
-import akka.util.Timeout
 import play.api.libs.iteratee.Concurrent
-import scala.concurrent.{ Promise, Future }
-import akka.actor.{ Actor, ActorRef, Props, PoisonPill, Cancellable }
-import com.cloud9ers.play2.sockjs.SockJsFrames
-import play.api.mvc.Result
-import play.api.libs.EventSource
-import play.api.libs.iteratee.Input
-import akka.event.Logging
-import play.api.mvc.AnyContent
+import play.api.mvc.{ AnyContent, Request }
 
 class EventSourceActor(channel: Concurrent.Channel[String], session: ActorRef, maxBytesStreaming: Int)
   extends TransportActor(session, Transport.EVENT_SOURCE) {

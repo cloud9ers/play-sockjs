@@ -1,22 +1,24 @@
 package com.cloud9ers.play2.sockjs
 
 import java.text.SimpleDateFormat
-import play.api.libs.concurrent.Execution.Implicits._
-import scala.concurrent.Future
 import java.util.Date
+
+import scala.Option.option2Iterable
+import scala.concurrent.Future
+import scala.concurrent.duration.DurationInt
 import scala.util.Random
-import play.api.libs.iteratee.{ Concurrent, Enumerator, Iteratee }
-import play.api.mvc.{ Action, WebSocket, Controller, Request, RequestHeader, AnyContent, Result }
-import play.api.libs.json.Json
-import play.api.libs.json.Json.toJsFieldJsValueWrapper
-import play.api.Play.current
-import play.api.Logger
+
+import com.cloud9ers.play2.sockjs.transports.{ EventSourceTransport, JsonPTransport, Transport, WebSocketTransport, XhrTransport }
+
+import akka.actor.{ ActorRef, actorRef2Scala }
 import akka.pattern.ask
-import scala.concurrent.duration._
 import akka.util.Timeout
-import akka.actor.ActorRef
-import com.cloud9ers.play2.sockjs.transports.{ Transport, WebSocketTransport, XhrTransport, EventSourceTransport, JsonPTransport }
-import play.api.libs.json.JsValue
+import play.api.Play.current
+import play.api.libs.concurrent.Execution.Implicits.defaultContext
+import play.api.libs.iteratee.{ Enumerator, Iteratee }
+import play.api.libs.json.{ JsValue, Json }
+import play.api.libs.json.Json.toJsFieldJsValueWrapper
+import play.api.mvc.{ Action, AnyContent, Controller, Request, RequestHeader, Result }
 
 case class SessionResult(session: Option[ActorRef], result: Result)
 
@@ -85,12 +87,12 @@ trait SockJs { self: Controller =>
         logger.debug(s"Session didn't found, sessionId: $sessionId, transport: $transport, serverId: $serverId")
         NotFound
       case Some(session) => transport match {
-        case Transport.XHR ⇒ XhrTransport.xhrPolling(sessionId, session)
-        case Transport.XHR_STREAMING ⇒ XhrTransport.xhrStreaming(sessionId, session)
-        case Transport.XHR_SEND ⇒ XhrTransport.xhrSend(sessionId, session)
-        case Transport.JSON_P ⇒ JsonPTransport.jsonpPolling(sessionId, session)
-        case Transport.JSON_P_SEND ⇒ JsonPTransport.jsonpSend(sessionId, session)
-        case Transport.EVENT_SOURCE ⇒ EventSourceTransport.eventSource(sessionId, session)
+        case Transport.XHR 				⇒ XhrTransport.xhrPolling(sessionId, session)
+        case Transport.XHR_STREAMING 	⇒ XhrTransport.xhrStreaming(sessionId, session)
+        case Transport.XHR_SEND 		⇒ XhrTransport.xhrSend(sessionId, session)
+        case Transport.JSON_P 			⇒ JsonPTransport.jsonpPolling(sessionId, session)
+        case Transport.JSON_P_SEND 		⇒ JsonPTransport.jsonpSend(sessionId, session)
+        case Transport.EVENT_SOURCE 	⇒ EventSourceTransport.eventSource(sessionId, session)
       }
     }
     SessionResult(session, result)
@@ -141,6 +143,6 @@ trait SockJs { self: Controller =>
     ACCESS_CONTROL_ALLOW_CREDENTIALS -> "true",
     ACCESS_CONTROL_ALLOW_ORIGIN -> req.headers.get("origin").map(o => if (o != "null") o else "*").getOrElse("*"))
     .union(
-      (for (acrh <- req.headers.get(ACCESS_CONTROL_REQUEST_HEADERS))
+      (for (acrh ← req.headers.get(ACCESS_CONTROL_REQUEST_HEADERS))
         yield (ACCESS_CONTROL_ALLOW_HEADERS -> acrh)).toSeq)
 }
