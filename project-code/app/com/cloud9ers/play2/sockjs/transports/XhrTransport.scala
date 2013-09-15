@@ -17,55 +17,37 @@ import play.api.mvc.AnyContent
 import play.api.libs.json.JsValue
 import com.cloud9ers.play2.sockjs.JsonCodec
 import org.codehaus.jackson.JsonParseException
+import akka.event.Logging
 
-class XhrPollingActor(promise: Promise[String], session: ActorRef) extends Actor {
-  session ! Session.Receive
-  def receive: Receive = {
-    case Session.OpenMessage =>
-      println("OOOOOOOOOOPPPPPPPPPPEN")
-      sendFrame(SockJsFrames.OPEN_FRAME); self ! PoisonPill
-    case Session.Message(m) =>
-      sendFrame("a" + m); self ! PoisonPill
-    case Session.HeartBeatFrame(h) => sendFrame(h); self ! PoisonPill
-    case Session.Close(code, reason) =>
-      sendFrame(SockJsFrames.closingFrame(code, reason))
-      self ! PoisonPill
-      println("XXXXXXX Xhr closed")
+class XhrPollingActor(promise: Promise[String], session: ActorRef) extends TransportActor(session, Transport.XHR) {
+  session ! Session.Register
+  def sendFrame(msg: String): Boolean = {
+    promise success msg + "\n"
+    false
   }
-  def sendFrame(msg: String) = promise success msg + "\n"
 }
 
-class XhrStreamingActor(channel: Concurrent.Channel[Array[Byte]], session: ActorRef) extends Actor {
+class XhrStreamingActor(channel: Concurrent.Channel[Array[Byte]], session: ActorRef)
+  extends TransportActor(session, Transport.XHR_STREAMING) {
   override def preStart() {
     import scala.language.postfixOps
     context.system.scheduler.scheduleOnce(100 milliseconds) {
       channel push SockJsFrames.XHR_STREAM_H_BLOCK
-      session ! Session.Receive
+      session ! Session.Register
     }
   }
 
-  def receive: Receive = {
-    case Session.OpenMessage =>
-      sendFrame(SockJsFrames.OPEN_FRAME); session ! Session.Receive
-    case Session.Message(m) =>
-      println("XhrStreaming ::<<<<<<<<< " + m)
-      sendFrame(s"a$m"); session ! Session.Receive
-    case Session.HeartBeatFrame(h) =>
-      sendFrame(h); session ! Session.Receive
-    case Session.Close(code, reason) =>
-      sendFrame(SockJsFrames.closingFrame(code, reason))
-      self ! PoisonPill
-      println("XXXXXXX XhrStreaming closed")
+  def sendFrame(msg: String) = {
+    channel push s"$msg\n".toArray.map(_.toByte)
+    true
   }
-
-  def sendFrame(msg: String) = channel push s"$msg\n".toArray.map(_.toByte)
 }
 
-object XhrTransport extends Transport {
+object XhrTransport extends TransportController {
 
   def xhrPolling(sessionId: String, session: ActorRef)(implicit request: Request[AnyContent]) = Async {
     val promise = Promise[String]()
-    system.actorOf(Props(new XhrPollingActor(promise, session)), s"xhr-polling.$sessionId")
+    system.actorOf(Props(new XhrPollingActor(promise, session)), s"xhr-polling.$sessionId.$randomNumber")
     promise.future.map { m =>
       Ok(m.toString)
         .withHeaders(
@@ -77,8 +59,8 @@ object XhrTransport extends Transport {
 
   def xhrStreaming(sessionId: String, session: ActorRef)(implicit request: Request[AnyContent]): Result = {
     val (enum, channel) = Concurrent.broadcast[Array[Byte]]
-    val xhrStreamingActor = system.actorOf(Props(new XhrStreamingActor(channel, session.asInstanceOf[ActorRef])), s"xhr-streaming.$sessionId")
-    (Ok stream enum.onDoneEnumerating(xhrStreamingActor ! PoisonPill))
+    val xhrStreamingActor = system.actorOf(Props(new XhrStreamingActor(channel, session.asInstanceOf[ActorRef])), s"xhr-streaming.$sessionId.$randomNumber")
+    (Ok.stream(enum.onDoneEnumerating { println("DDDDDDDDDSSSSSSSSSSSSSSSSSSSSS"); xhrStreamingActor ! PoisonPill }))
       .withHeaders(
         CONTENT_TYPE -> "application/javascript;charset=UTF-8",
         CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")

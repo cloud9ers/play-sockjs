@@ -22,25 +22,23 @@ import com.cloud9ers.play2.sockjs.JsonCodec
 import org.codehaus.jackson.JsonParseException
 import scala.util.Try
 
-class JsonpPollingActor(promise: Promise[String], session: ActorRef) extends Actor {
-  session ! Session.Receive
-  def receive: Receive = {
-    case Session.OpenMessage =>
-      promise success SockJsFrames.OPEN_FRAME; self ! PoisonPill
-    case Session.Message(m) =>
-      promise success s"a$m"; self ! PoisonPill
-    case Session.HeartBeatFrame(h) => promise success h; self ! PoisonPill
+class JsonpPollingActor(promise: Promise[String], session: ActorRef) extends TransportActor(session, Transport.JSON_P) {
+  session ! Session.Register
+  def sendFrame(msg: String): Boolean = {
+    println("JSONP <<<<<<<<K: " + msg )
+    promise success msg
+    false
   }
 }
 
-object JsonPTransport extends Transport {
+object JsonPTransport extends TransportController {
 
   def jsonpPolling(sessionId: String, session: ActorRef)(implicit request: Request[AnyContent]) = Async(
     request.queryString.get("c").map { callback =>
       val promise = Promise[String]()
-      system.actorOf(Props(new JsonpPollingActor(promise, session)), s"xhr-polling.$sessionId")
+      system.actorOf(Props(new JsonpPollingActor(promise, session)), s"xhr-polling.$sessionId.$randomNumber")
       promise.future.map(m =>
-        Ok(s"""${callback.reduceLeft(_ + _)}("${escapeJavaScript(m)}");\r\n""") // callback(\\"m\\");\r\n //FIXME: skip '"'
+        Ok(s"""${callback.reduceLeft(_ + _)}("${escapeJavaScript(m)}");\r\n""") // callback(\\"m\\");\r\n
           .withHeaders(
             CONTENT_TYPE -> "application/javascript;charset=UTF-8",
             CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")

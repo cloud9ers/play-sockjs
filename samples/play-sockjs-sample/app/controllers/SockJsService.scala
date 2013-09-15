@@ -20,6 +20,19 @@ import akka.util.Timeout
 import akka.actor.ActorRef
 import play.api.mvc.Request
 import play.api.libs.json.JsString
+import akka.actor.PoisonPill
+
+class X(c: Concurrent.Channel[String]) extends Actor {
+  override def preStart() = context.system.scheduler.scheduleOnce(100 milliseconds)(self ! "start")
+
+  def receive() = {
+    case "start" =>
+      println("FUCK!!!!"); c push "FUCK!!!!"; context.system.scheduler.scheduleOnce(500 milliseconds)(self ! "start")
+    case "stop" =>
+      println("swollow PoisonPill"); self ! PoisonPill
+  }
+  override def postStop() = println("BOOOOOOOOOOOOOM!!!")
+}
 
 object SockJsService extends Controller with SockJs {
   /*
@@ -46,6 +59,29 @@ object SockJsService extends Controller with SockJs {
   def sockJsHandler2(route: String) = sockJsHandler
 
   def websocket[String](server: String, session: String) = SockJs.websocket(handler)
+
+  def sss1() = {
+    val (e, ch) = Concurrent.broadcast[String]
+    var i = 1
+    Future(while (i > 0) {
+      ch push s"msg $i"
+      i = i + 1
+      println(i)
+      Thread sleep 500
+    })
+    Action(Ok.stream(e.onDoneEnumerating { i = -100; println("BOOOOOOOOOM!") }))
+  }
+
+  def sss() = {
+    val (e, ch) = Concurrent.broadcast[String]
+    val x = system.actorOf(Props(new X(ch)), "Fuck.Actor")
+    Action(implicit request =>
+      Ok.stream(e.onDoneEnumerating { x ! "stop"; println("BOOOOOOOOOM!") })
+        .withHeaders(
+          CONTENT_TYPE -> "text/event-stream;charset=UTF-8",
+          CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
+        .withHeaders(cors: _*))
+  }
 
   object SockJs2 {
     val system = ActorSystem("sockJs")

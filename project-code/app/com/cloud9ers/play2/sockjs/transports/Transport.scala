@@ -1,15 +1,12 @@
 package com.cloud9ers.play2.sockjs.transports
 
-import com.cloud9ers.play2.sockjs.{ SockJsPlugin, SockJs, SessionManager }
-import play.api.mvc.{ Controller, RequestHeader, Request, Result, AnyContent }
-import play.api.libs.iteratee.{ Enumerator, Iteratee, Concurrent }
-import play.api.libs.json.JsValue
-import akka.actor.{ Actor, ActorRef }
-import akka.pattern.ask
-import scala.concurrent.duration._
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.cloud9ers.play2.sockjs.SockJs
+import play.api.mvc.Controller
+import akka.actor.{ Actor, ActorRef, PoisonPill, Cancellable, Props }
 import com.cloud9ers.play2.sockjs.Session
-import scala.concurrent.Future
+import akka.event.Logging
+import scala.concurrent.duration._
+import com.cloud9ers.play2.sockjs.SockJsFrames
 
 object Transport {
   val WEBSOCKET = "websocket"
@@ -25,26 +22,56 @@ object Transport {
   val CONTENT_TYPE_PLAIN = "text/plain; charset=UTF-8"
   val CONTENT_TYPE_HTML = "text/html; charset=UTF-8"
 }
-class Transport extends Controller with SockJs {
+
+abstract class TransportActor(session: ActorRef, kind: String = "") extends Actor {
+  import scala.language.postfixOps
+  implicit val executionContext = context.system.dispatcher
+
+  val logger = Logging(context.system, this)
+  val heartBeatTimeout = 35 seconds
+  var heartBeatTask: Option[Cancellable] = None
+
+  setTimer()
+
+  /**
+   * returns Boolean determines if the transport is still ready for sending more messages
+   */
+  def sendFrame(m: String): Boolean
+
+  def receive: Receive = {
+    case Session.OpenMessage =>
+      if (sendFrame(SockJsFrames.OPEN_FRAME)) session ! Session.Register
+      else self ! PoisonPill
+
+    case Session.Message(m) =>
+      setTimer()
+      if (sendFrame(m)) session ! Session.Register
+      else self ! PoisonPill
+
+    case Session.HeartBeat =>
+      setTimer()
+      if (sendFrame(SockJsFrames.HEARTBEAT_FRAME)) session ! Session.Register
+      else self ! PoisonPill
+
+    case Session.Close(code, reason) =>
+      sendFrame(SockJsFrames.closingFrame(code, reason))
+      self ! PoisonPill
+  }
+
+  def setTimer() {
+    for (h <- heartBeatTask) h.cancel()
+    heartBeatTask = Some(context.system.scheduler.scheduleOnce(heartBeatTimeout, self, PoisonPill)) //set timer
+  }
+
+  override def postStop() {
+    println(kind + " BOOOOOOOOOOM!")
+  }
+}
+
+class TransportController extends Controller with SockJs {
   /*
    * Implements few methods that session expects to see in each transport
    */
-
-}
-
-object BaseTransport extends Transport {
-  def closeSession(sessionId: String, session: ActorRef)(implicit request: Request[AnyContent]): Result =
-    {
-//      Async((sessionManager ? SessionManager.GetOrCreateSession(sessionId)).map {
-//        case None => NotFound
-//        case Some(ses: ActorRef) =>
-//          val (upEnumerator, upChannel) = Concurrent.broadcast[JsValue]
-//          val downIteratee = Iteratee.foreach[JsValue](userMsg => ses ! Session.Enqueue(userMsg)) //TODO: enqueue in close! is that important?
-//          f(request)(upEnumerator, downIteratee)
-//          upChannel.eofAndEnd()
-//          ses ! Session.Close(3000, "Go Away!")
-
-          Ok //FIXME: close response
-//      })
-    }
+  def createTransportActor(sessionId: String, transport: String, actorObject: TransportActor) =
+    system.actorOf(Props(actorObject), s"eventsource.$sessionId.$randomNumber")
 }

@@ -9,6 +9,7 @@ import com.typesafe.config.ConfigFactory
 import akka.actor.Props
 
 class SockJsPlugin(app: Application) extends Plugin {
+  //TODO: Handle configuration a better way e.g. encapsulate	
   lazy val logger = Logger("SockJsPlugin")
   lazy val prefix: String = app.configuration.getString("sockjs.prefix").getOrElse("/")
   lazy val maxLength: Int = app.configuration.getInt("sockjs.maxLength").getOrElse(1024 * 100)
@@ -19,8 +20,9 @@ class SockJsPlugin(app: Application) extends Plugin {
 
   lazy val config = app.configuration.getConfig("sockjs").map(f => f.underlying).getOrElse(ConfigFactory.empty())
   lazy val system = ActorSystem("SockJsActorSystem", config)
-  lazy val heartbeatPeriod: Long = app.configuration.getLong("sockjs.heartbeat_period").getOrElse(25l * 1000)
-  lazy val sessionManager = system.actorOf(Props(new SessionManager(heartbeatPeriod)), "sessions")
+  lazy val heartbeatDelay: Long = app.configuration.getLong("sockjs.heartbeetDelay").getOrElse(25 * 1000)
+  lazy val sessionManager = system.actorOf(Props(new SessionManager(heartbeatDelay)), "sessions")
+  lazy val disconnectDelay: Long = app.configuration.getLong("sockjs.diconnectDelay").getOrElse(5000)
 
   override def enabled = app.configuration.getBoolean("play.sockjs.enabled").getOrElse(true)
 

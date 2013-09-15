@@ -12,15 +12,7 @@ import akka.util.Timeout
 import play.api.libs.json.JsValue
 import com.cloud9ers.play2.sockjs.JsonCodec
 
-@deprecated("","")
-class WebsocketActor[A](channel: Concurrent.Channel[A], session: ActorRef) extends Actor {
-  session ! Session.Receive
-  def receive = {
-    case Session.Message(m) => channel push m.asInstanceOf[A]; session ! Session.Receive
-  }
-}
-
-object WebSocketTransport extends Transport {
+object WebSocketTransport extends TransportController {
   /*
    * Websocket transport implementation
    */
@@ -56,19 +48,7 @@ object WebSocketTransport extends Transport {
       val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
       val (upEnumerator, upChannel) = Concurrent.broadcast[String]
       val in = Iteratee.foreach[String](m => upChannel push m)
-
       val (out, outChannel) = Concurrent.broadcast[String]
-
-      // Use of session actor
-      //      (sessionManager ? SessionManager.GetOrCreateSession(sessionId))
-      //        .map {
-      //          case session: ActorRef =>
-      //            val downIteratee = Iteratee.foreach[A] { userMsg => println(userMsg); session ! Session.Enqueue(userMsg.asInstanceOf[String]) } //enqueue
-      //            Future { Thread sleep 100; system.actorOf(Props(new WebsocketActor(outChannel, session)), s"websocket-$sessionId") } // dequeue
-      //            f(rh)(upEnumerator, downIteratee)
-      //            (in, out)
-      //        }
-
       Future {
         val downIteratee = Iteratee.foreach[String] { userMsg => outChannel push s"a$userMsg" }
         Future { Thread sleep 100; outChannel push "o" }

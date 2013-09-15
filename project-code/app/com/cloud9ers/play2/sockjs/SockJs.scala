@@ -1,6 +1,5 @@
 package com.cloud9ers.play2.sockjs
 
-import com.cloud9ers.play2.sockjs.transports.{ Transport, BaseTransport }
 import java.text.SimpleDateFormat
 import play.api.libs.concurrent.Execution.Implicits._
 import scala.concurrent.Future
@@ -16,7 +15,7 @@ import akka.pattern.ask
 import scala.concurrent.duration._
 import akka.util.Timeout
 import akka.actor.ActorRef
-import com.cloud9ers.play2.sockjs.transports.{ WebSocketTransport, XhrTransport, EventSourceTransport, JsonPTransport }
+import com.cloud9ers.play2.sockjs.transports.{ Transport, WebSocketTransport, XhrTransport, EventSourceTransport, JsonPTransport }
 import play.api.libs.json.JsValue
 
 case class SessionResult(session: Option[ActorRef], result: Result)
@@ -53,12 +52,10 @@ trait SockJs { self: Controller =>
           case iframeUrl(_) => handleIframe
           case infoRoute() => info(websocket = websocketEnabled)
           case infoDisabledWebsocketRoute() => info(websocket = false)
-          case sessionUrl() => Async(futureSession(handler).map(session => handleSession(session)))
-          case closeSessionUrl(sessionId) => Async(futureSession(handler).map { session =>
-            val r = handleSession(session)
-            closeSession(session)
-            r
-          })
+          case sessionUrl() =>
+            Async(futureSession(handler).map(handleMessages(_)).map(_.result))
+          case closeSessionUrl(sessionid) =>
+            Async(futureSession(handler).map(handleMessages(_)).map(closeSession(_)).map(_.result))
           case _ => NotFound("Notfound")
         }
     }
@@ -80,10 +77,10 @@ trait SockJs { self: Controller =>
     futureSession.mapTo[Option[ActorRef]]
   }
 
-  def handleSession(session: Option[ActorRef])(implicit request: Request[AnyContent]): Result = {
+  def handleMessages(session: Option[ActorRef])(implicit request: Request[AnyContent]): SessionResult = {
     val pathList = request.path.split("/").reverse
     val (transport, sessionId, serverId) = (pathList(0), pathList(1), pathList(2))
-    session match {
+    val result = session match {
       case None =>
         logger.debug(s"Session didn't found, sessionId: $sessionId, transport: $transport, serverId: $serverId")
         NotFound
@@ -96,10 +93,13 @@ trait SockJs { self: Controller =>
         case Transport.EVENT_SOURCE ⇒ EventSourceTransport.eventSource(sessionId, session)
       }
     }
+    SessionResult(session, result)
   }
 
-  def closeSession(session: Option[ActorRef])(implicit request: Request[AnyContent]): Unit =
-    for (s <- session) { s ! Session.Close(3000,"Go away!"); s }
+  def closeSession(sessionResult: SessionResult)(implicit request: Request[AnyContent]): SessionResult = {
+    for (session <- sessionResult.session) session ! Session.Close(3000, "Go away!")
+    sessionResult
+  }
 
   def handleIframe(implicit request: Request[AnyContent]) =
     if (request.headers.toMap.contains(IF_NONE_MATCH)) {
