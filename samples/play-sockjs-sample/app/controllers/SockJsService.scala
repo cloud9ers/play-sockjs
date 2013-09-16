@@ -1,4 +1,4 @@
-Xpackage controllers
+package controllers
 
 import com.cloud9ers.play2.sockjs.SockJs
 import play.api.libs.iteratee.{ Concurrent, Iteratee }
