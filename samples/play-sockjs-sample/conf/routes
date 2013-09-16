@@ -4,14 +4,13 @@
 
 # Home page
 GET     /                           controllers.Application.index
-GET		/echo/:server/:session/websocket 		    controllers.SockJsService.websocket(server, session)
-POST	/close/$route<.*>			controllers.SockJsService.sockJsHandler2(route)
-GET		/echo/$route<.*> 		    controllers.SockJsService.sockJsHandler2(route)
-POST    /echo/$route<.*> 		    controllers.SockJsService.sockJsHandler2(route)
+#GET		/echo/:server/:session/websocket 		    controllers.SockJsService.websocket(server, session)
+#POST	/close/$route<.*>			controllers.SockJsService.sockJsHandler2(route)
+#GET		/echo/$route<.*> 		    controllers.SockJsService.sockJsHandler2(route)
+#POST    /echo/$route<.*> 		    controllers.SockJsService.sockJsHandler2(route)
 #GET		/echo			 		    controllers.SockJsService.sockJsHandler
 #OPTIONS /echo/info					controllers.SockJsService.sockJsHandler
 #GET		/disabled_websocket_echo/info	controllers.SockJsService.sockJsHandler
-GET		/sss						controllers.SockJsService.sss
 
 # Map static resources from the /public folder to the /assets URL path
 GET     /assets/*file               controllers.Assets.at(path="/public", file)
