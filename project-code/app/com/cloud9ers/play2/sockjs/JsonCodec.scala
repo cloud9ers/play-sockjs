@@ -15,10 +15,7 @@ object JsonCodec {
   /**
    * Decodes the String JSON to JsValue to be sent to the user handler
    */
-  def decodeJson(msg: String): JsValue = Json parse msg match {
-    case jsArr: JsArray => jsArr(0)
-    case jsVal => jsVal
-  }
+  def decodeJson(msg: String): JsValue = Json parse msg
   
   import scala.language.reflectiveCalls
   val JsonEncoder: Enumeratee[JsValue, String] = Enumeratee map encodeJson
