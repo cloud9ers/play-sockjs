@@ -22,7 +22,7 @@ object SockJsService extends Controller with SockJs {
    */
   def handler(rh: RequestHeader) = {
     val (downEnumerator, downChannel) = Concurrent.broadcast[JsValue]
-    val upIteratee = Iteratee.foreach[JsValue] { msg => downChannel push msg; println(s"handler ::::::::::: message: $msg") }
+    val upIteratee = Iteratee.foreach[JsValue] { msg => downChannel push msg; println(s"handler2 ::::::::::: message: $msg") }
     Promise.pure(upIteratee, downEnumerator)
 
   }

@@ -41,7 +41,7 @@ trait SockJs { self: Controller =>
   val closeSessionUrl = "^/close/[^.]+(/[^.]+)$".r
 
   lazy val iframePage = new IframePage(current.plugin[SockJsPlugin].map(_.clientUrl).getOrElse(""))
-
+  
   object SockJs {
     /**
      * The same as Websocket.async
