@@ -11,8 +11,7 @@ object ApplicationBuild extends Build {
   val appScalaCrossVersions = Seq("2.10.0")
 
   val appDependencies = Seq(
-    jdbc,
-    anorm
+    "play" % "routes-compiler_2.9.2" % "2.1.4"
   )
 
 

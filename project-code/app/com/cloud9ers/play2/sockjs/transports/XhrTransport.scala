@@ -6,12 +6,12 @@ import scala.concurrent.duration.DurationInt
 
 import org.codehaus.jackson.JsonParseException
 
-import com.cloud9ers.play2.sockjs.{JsonCodec, Session, SockJsFrames}
+import com.cloud9ers.play2.sockjs.{ JsonCodec, Session, SockJsFrames }
 
-import akka.actor.{ActorRef, PoisonPill, Props, actorRef2Scala}
+import akka.actor.{ ActorRef, PoisonPill, Props, actorRef2Scala }
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 import play.api.libs.iteratee.Concurrent
-import play.api.mvc.{AnyContent, Request, Result}
+import play.api.mvc.{ AnyContent, Request, Result }
 
 class XhrPollingActor(promise: Promise[String], session: ActorRef) extends TransportActor(session, Transport.XHR) {
   session ! Session.Register
@@ -54,7 +54,7 @@ object XhrTransport extends TransportController {
   def xhrStreaming(sessionId: String, session: ActorRef)(implicit request: Request[AnyContent]): Result = {
     val (enum, channel) = Concurrent.broadcast[Array[Byte]]
     val xhrStreamingActor = system.actorOf(Props(new XhrStreamingActor(channel, session.asInstanceOf[ActorRef])), s"xhr-streaming.$sessionId.$randomNumber")
-    (Ok.stream(enum.onDoneEnumerating { println("DDDDDDDDDSSSSSSSSSSSSSSSSSSSSS"); xhrStreamingActor ! PoisonPill }))
+    (Ok.stream(enum.onDoneEnumerating(xhrStreamingActor ! PoisonPill)))
       .withHeaders(
         CONTENT_TYPE -> "application/javascript;charset=UTF-8",
         CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
