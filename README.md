@@ -45,7 +45,11 @@ Play2 plugin for SockJS (Not ready yet for using it)
 	object SockJsService extends Controller with SockJs {
 	  def handler(rh: RequestHeader) = {
 	    val (enumerator, channel) = Concurrent.broadcast[JsValue]
-	    val iteratee = Iteratee.foreach[JsValue] (msg => channel push msg)
+	    val iteratee = Iteratee.foreach[JsValue] { msg =>
+	      // msg: is the message comming from the client
+	      // channel: is where you send messages to the client
+	      channel push msg // just send back the message
+	    }
 	    Promise.pure(iteratee, enumerator)
 	  }
 	
@@ -64,5 +68,28 @@ Play2 plugin for SockJS (Not ready yet for using it)
 	object Global extends SockJsGlobalSettings {
 	  def sockJsAction = controllers.SockJsService.sockJsHandler
 	  def sockJsWebsocket = controllers.SockJsService.websocket
+	}
+```
+7. Finnaly, you need to add the base Url to the configuration in application.con
+```
+	sockjs.prefix=echo
+```
+
+* Full configurations:
+
+```
+	sockjs.prefix=echo
+	sockjs.responseLimit=1000
+	sockjs.jsessionid=false
+	sockjs.heartbeetDelay=1000
+	sockjs.diconnectDelay=5000
+	sockjs.websocketEnabled=false
+	sockjs {
+	 akka {
+	  stdout-loglevel = "DEBUG"
+	  loglevel = "DEBUG"
+	    log-dead-letters = 10
+	    log-dead-letters-during-shutdown = on
+	  }
 	}
 ```
