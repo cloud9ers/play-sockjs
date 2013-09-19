@@ -2,19 +2,23 @@ play-sockjs
 ===========
 
 Play2 plugin for SockJS (Not ready yet for using it)
+* So far, you can add only one sockjs
 
 ## How to use
 
  1. Clone the repo to your local machine
+
 ```
 	git clone https://github.com/ashihaby/play-sockjs.git
 ```
  2. Compile and publish the plugin to local play repo
+
 ```
 	cd play-sockjs/project-code
 	play publish-local
 ```
  3. Add it to your play project dependencies
+
 ```scala
 	val sockjs = "play-sockjs" % "play-sockjs_2.10" % "1.0-SNAPSHOT"
 	val appDependencies = Seq(
@@ -22,10 +26,12 @@ Play2 plugin for SockJS (Not ready yet for using it)
 	)
 ```
 4. Include the pluing in conf/play.plugins
+
 ```
 	10000:com.cloud9ers.play2.sockjs.SockJsPlugin
 ```
-5. Write your controler and inherit from SockJsTrait
+5. Write your controller and inherit from SockJsTrait
+
 ```scala
 	package controllers
 	
@@ -43,10 +49,20 @@ Play2 plugin for SockJS (Not ready yet for using it)
 	    Promise.pure(iteratee, enumerator)
 	  }
 	
-	  def sockJsHandler = SockJs.async(handler)
+	  def sockJsAction = SockJs.async(handler)
 	
-	  def sockJsHandler2(route: String) = sockJsHandler
+	  def websocket[String] = SockJs.websocket(handler)
+	}
+```
+6. Add object Global in the default package in Global.scala
+	* This is required so far to avoid play routing because sockjs requieres complex routing scheme
+	* We hope to find a better approach soon
+
+```scala
+	import com.cloud9ers.play2.sockjs.SockJsGlobalSettings
 	
-	  def websocket[String](server: String, session: String) = SockJs.websocket(handler)
+	object Global extends SockJsGlobalSettings {
+	  def sockJsAction = controllers.SockJsService.sockJsHandler
+	  def sockJsWebsocket = controllers.SockJsService.websocket
 	}
 ```
