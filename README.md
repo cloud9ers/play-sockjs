@@ -55,7 +55,7 @@ Play2 plugin for SockJS (Not ready yet for using it)
 	}
 ```
 6. Add object Global in the default package in Global.scala
-	* This is required so far to avoid play routing because sockjs requieres complex routing scheme
+	* This is required so far to avoid play routing because sockjs requires complex routing scheme
 	* We hope to find a better approach soon
 
 ```scala
