@@ -17,10 +17,10 @@ Play2 plugin for SockJS (Not ready yet for using it)
 ```
  3. Add it to your play project dependencies
 ```scala
-  val sockjs = "play-sockjs" % "play-sockjs_2.10" % "1.0-SNAPSHOT"
-  val appDependencies = Seq(
-    sockjs
-  )
+	val sockjs = "play-sockjs" % "play-sockjs_2.10" % "1.0-SNAPSHOT"
+	val appDependencies = Seq(
+	  sockjs
+	)
 ```
 4. Include the pluing in conf/play.plugins
 ```
