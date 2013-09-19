@@ -4,16 +4,15 @@ play-sockjs
 Play2 plugin for SockJS (Not ready yet for using it)
 
 ## How to use
--------------
 
  1. Clone the repo to your local machine
 ```
-  git clone https://github.com/ashihaby/play-sockjs.git
+	git clone https://github.com/ashihaby/play-sockjs.git
 ```
  2. Compile and publish the plugin to local play repo
 ```
-  cd play-sockjs/project-code
-  play publish-local
+	cd play-sockjs/project-code
+	play publish-local
 ```
  3. Add it to your play project dependencies
 ```scala
@@ -24,12 +23,12 @@ Play2 plugin for SockJS (Not ready yet for using it)
 ```
 4. Include the pluing in conf/play.plugins
 ```
-  10000:com.cloud9ers.play2.sockjs.SockJsPlugin
+	10000:com.cloud9ers.play2.sockjs.SockJsPlugin
 ```
 5. Write your controler and inherit from SockJsTrait
 ```scala
 	package controllers
-
+	
 	import com.cloud9ers.play2.sockjs.SockJs
 	
 	import play.api.libs.concurrent.Promise
