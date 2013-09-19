@@ -3,8 +3,8 @@ play-sockjs
 
 Play2 plugin for SockJS (Not ready yet for using it)
 
-# How to use
-==========
+## How to use
+-------------
 
  1. Clone the repo to your local machine
 ```
