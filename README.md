@@ -28,7 +28,7 @@ Play2 plugin for SockJS (Not ready yet for using it)
 ```
 5. Write your controler and inherit from SockJsTrait
 ```scala
-  package controllers
+	package controllers
 
 	import com.cloud9ers.play2.sockjs.SockJs
 	
