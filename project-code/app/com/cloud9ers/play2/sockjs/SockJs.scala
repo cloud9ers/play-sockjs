@@ -23,6 +23,8 @@ import play.api.mvc.{ Action, AnyContent, Controller, Request, RequestHeader, Re
 case class SessionResult(session: Option[ActorRef], result: Result)
 
 trait SockJs { self: Controller =>
+  type Handler = RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])]
+
   lazy val logger = SockJsPlugin.current.logger
   lazy val system = SockJsPlugin.current.system
   def randomNumber() = 2L << 30 + Random.nextInt
@@ -41,7 +43,7 @@ trait SockJs { self: Controller =>
   val closeSessionUrl = "^/close/[^.]+(/[^.]+)$".r
 
   lazy val iframePage = new IframePage(current.plugin[SockJsPlugin].map(_.clientUrl).getOrElse(""))
-  
+
   object SockJs {
     /**
      * The same as Websocket.async
@@ -87,12 +89,12 @@ trait SockJs { self: Controller =>
         logger.debug(s"Session didn't found, sessionId: $sessionId, transport: $transport, serverId: $serverId")
         NotFound
       case Some(session) => transport match {
-        case Transport.XHR 				⇒ XhrTransport.xhrPolling(sessionId, session)
-        case Transport.XHR_STREAMING 	⇒ XhrTransport.xhrStreaming(sessionId, session)
-        case Transport.XHR_SEND 		⇒ XhrTransport.xhrSend(sessionId, session)
-        case Transport.JSON_P 			⇒ JsonPTransport.jsonpPolling(sessionId, session)
-        case Transport.JSON_P_SEND 		⇒ JsonPTransport.jsonpSend(sessionId, session)
-        case Transport.EVENT_SOURCE 	⇒ EventSourceTransport.eventSource(sessionId, session)
+        case Transport.XHR ⇒ XhrTransport.xhrPolling(sessionId, session)
+        case Transport.XHR_STREAMING ⇒ XhrTransport.xhrStreaming(sessionId, session)
+        case Transport.XHR_SEND ⇒ XhrTransport.xhrSend(sessionId, session)
+        case Transport.JSON_P ⇒ JsonPTransport.jsonpPolling(sessionId, session)
+        case Transport.JSON_P_SEND ⇒ JsonPTransport.jsonpSend(sessionId, session)
+        case Transport.EVENT_SOURCE ⇒ EventSourceTransport.eventSource(sessionId, session)
       }
     }
     SessionResult(session, result)
