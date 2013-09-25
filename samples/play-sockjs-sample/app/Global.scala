@@ -1,6 +1,6 @@
-import com.cloud9ers.play2.sockjs.SockJsGlobalSettings
+import play.api.GlobalSettings
+import com.cloud9ers.play2.sockjs.SockJsRouter
 
-object Global extends SockJsGlobalSettings {
-  def sockJsAction = controllers.SockJsService.sockJsHandler
-  def sockJsWebsocket = controllers.SockJsService.websocket
+object Global extends GlobalSettings with SockJsRouter {
+  def sockJsHandler = controllers.SockJsService.sockJsHandler
 }

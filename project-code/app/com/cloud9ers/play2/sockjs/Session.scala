@@ -1,13 +1,13 @@
 package com.cloud9ers.play2.sockjs
 
 import scala.concurrent.Future
-import scala.concurrent.duration.{DurationInt, DurationLong}
+import scala.concurrent.duration.{ DurationInt, DurationLong }
 
-import akka.actor.{Actor, ActorRef, Cancellable, PoisonPill, actorRef2Scala}
+import akka.actor.{ Actor, ActorRef, Cancellable, PoisonPill, actorRef2Scala }
 import akka.event.Logging
-import play.api.libs.iteratee.{Concurrent, Enumerator, Input, Iteratee}
-import play.api.libs.json.{JsArray, JsValue}
-import play.api.mvc.{AnyContent, Request, RequestHeader}
+import play.api.libs.iteratee.{ Concurrent, Enumerator, Input, Iteratee }
+import play.api.libs.json.{ JsArray, JsValue }
+import play.api.mvc.{ AnyContent, Request, RequestHeader }
 
 /**
  * Session class to queue messages over multiple connection like xhr and xhr_send
@@ -82,10 +82,10 @@ class Session(handler: RequestHeader ⇒ Future[(Iteratee[JsValue, _], Enumerato
   }
 
   def writePendingMessages(tl: ActorRef) {
+    logger.debug(s"writePendingMessages: tl: $tl, pendingWrites: $pendingWrites")
     val ms = pendingWrites.dequeueAll(_ ⇒ true).toList
     tl ! Session.Message("a" + JsonCodec.encodeJson(JsArray(ms)))
     resetListener()
-    logger.debug(s"writePendingMessages: tl: $tl, pendingWrites: pendingWrites")
   }
 
   def close(closeMsg: Session.Close) {
