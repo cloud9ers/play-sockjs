@@ -17,6 +17,11 @@ class XhrPollingActor(promise: Promise[String], session: ActorRef) extends Trans
     promise success msg + "\n"
     false
   }
+
+  override def postStop() {
+    session ! Session.Close(1002, "Connection interrupted")  //FIXME: this should be closing the session but it works fine by mistake!!!!
+    super.postStop()
+  }
 }
 
 class XhrStreamingActor(channel: Concurrent.Channel[Array[Byte]], session: ActorRef, maxBytesStreaming: Int)
@@ -41,6 +46,12 @@ class XhrStreamingActor(channel: Concurrent.Channel[Array[Byte]], session: Actor
       false
     }
   }
+
+  override def postStop() {
+    channel push Array[Byte]()
+    session ! Session.Close(1002, "Connection interrupted")
+    super.postStop()
+  }
 }
 
 object XhrTransport extends TransportController {
@@ -48,7 +59,7 @@ object XhrTransport extends TransportController {
   def xhrPolling(sessionId: String, session: ActorRef)(implicit request: Request[AnyContent]) = Async {
     val promise = Promise[String]()
     system.actorOf(Props(new XhrPollingActor(promise, session)), s"xhr-polling.$sessionId.$randomNumber")
-    promise.future.map { m =>
+    promise.future.map { m ⇒
       Ok(m.toString)
         .withHeaders(
           CONTENT_TYPE -> "application/javascript;charset=UTF-8",
@@ -69,7 +80,7 @@ object XhrTransport extends TransportController {
 
   def xhrSend(sessionId: String, session: ActorRef)(implicit request: Request[AnyContent]): Result = {
     //FIXME: if the content-type is text/xml then play will return 400 bad request before it comes here WTF! :@
-    val message: String = request.body.asRaw.flatMap(r => r.asBytes(maxLength).map(b => new String(b)))
+    val message: String = request.body.asRaw.flatMap(r ⇒ r.asBytes(maxLength).map(b ⇒ new String(b)))
       .getOrElse(request.body.asText
         .orElse(request.body.asJson map Json.stringify)
         .getOrElse(""))
@@ -87,7 +98,7 @@ object XhrTransport extends TransportController {
             CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
           .withHeaders(cors: _*)
       } catch {
-        case e: JsonParseException =>
+        case e: JsonParseException ⇒
           logger.debug(s"xhr_send, error in parsing message, errorMessage: ${e.getMessage}")
           InternalServerError("Broken JSON encoding.")
       }

@@ -64,9 +64,9 @@ trait SockJs { self: Controller =>
           case ("OPTIONS", infoRoute()) => handleCORSOptions(List("OPTIONS", "GET"))
           case ("OPTIONS", sessionUrl()) => handleCORSOptions(List("OPTIONS", "POST"))
           case ("POST" | "GET", sessionUrl()) =>
-            Async(futureSession(handler).map(handleMessages(_)).map(_.result))
+            Async(futureSession(handler).map(handleMessages).map(_.result))
           case (_, closeSessionUrl(sessionid)) =>
-            Async(futureSession(handler).map(handleMessages(_)).map(closeSession(_)).map(_.result))
+            Async(futureSession(handler).map(handleMessages).map(closeSession).map(_.result))
           case _ => NotFound("Notfound")
         }
     }
@@ -108,7 +108,10 @@ trait SockJs { self: Controller =>
   }
 
   def closeSession(sessionResult: SessionResult)(implicit request: Request[AnyContent]): SessionResult = {
-    for (session <- sessionResult.session) session ! Session.Close(3000, "Go away!")
+    for (session <- sessionResult.session) {
+      logger.debug(s"calling close session: ${session}")
+      session ! Session.Close(3000, "Go away!")
+    }
     sessionResult
   }
 
