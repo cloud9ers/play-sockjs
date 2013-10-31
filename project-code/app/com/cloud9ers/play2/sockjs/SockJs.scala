@@ -19,7 +19,7 @@ import play.api.mvc.{ Action, AnyContent, Controller, Request, RequestHeader, Re
 import play.api.mvc.WebSocket
 
 case class SessionResult(session: Option[ActorRef], result: Result)
-case class SockJsHandler(action: Action[AnyContent], websocket: WebSocket[String])
+case class SockJsHandler(action: String => Action[AnyContent], websocket: (String, String) => WebSocket[String])
 
 trait SockJs { self: Controller =>
   type Handler = RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])]
@@ -49,7 +49,7 @@ trait SockJs { self: Controller =>
      * The same as Websocket.async
      * @param f - user function that takes the request header and return Future of the user's Iteratee and Enumerator
      */
-    def async(handler: Handler) = SockJsHandler(action(handler), websocket(handler))
+    def async(handler: Handler) = SockJsHandler((route) => action(handler), (server, session) => websocket(handler))
 
     /**
      * Action

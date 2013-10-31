@@ -3,7 +3,21 @@
 # ~~~~
 
 # Home page
-GET     /                           controllers.Application.index
+GET     /                           		controllers.Application.index
+GET		/echo/:server/:session/websocket	controllers.SockJsService.echoWebsocket(server, session)
+GET		/echo								controllers.SockJsService.echoAction(route="")
+GET		/echo/$route<.*>					controllers.SockJsService.echoAction(route)
+OPTIONS /echo								controllers.SockJsService.echoAction(route="")
+OPTIONS /echo/$route<.*>					controllers.SockJsService.echoAction(route)
+POST /echo/$route<.*>						controllers.SockJsService.echoAction(route)
+
+GET		/close								controllers.SockJsService.closeAction(route="")
+GET		/close/$route<.*>					controllers.SockJsService.closeAction(route)
+OPTIONS /close								controllers.SockJsService.closeAction(route="")
+OPTIONS /close/$route<.*>					controllers.SockJsService.closeAction(route)
+POST /close/$route<.*>						controllers.SockJsService.closeAction(route)
+
+
 #GET		/echo/:server/:session/websocket 		    controllers.SockJsService.websocket(server, session)
 #POST	/close/$route<.*>			controllers.SockJsService.sockJsHandler2(route)
 #GET		/echo/$route<.*> 		    controllers.SockJsService.sockJsHandler2(route)

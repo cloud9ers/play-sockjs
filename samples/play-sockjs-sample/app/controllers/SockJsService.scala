@@ -1,11 +1,14 @@
 package controllers
 
 import com.cloud9ers.play2.sockjs.SockJs
-
 import play.api.libs.concurrent.Promise
 import play.api.libs.iteratee.{ Concurrent, Iteratee }
 import play.api.libs.json.JsValue
 import play.api.mvc.{ Controller, RequestHeader }
+import play.api.libs.iteratee.Enumerator
+import play.api.libs.iteratee.Input
+import scala.concurrent.Future
+import com.cloud9ers.play2.sockjs.SockJsHandler
 
 object SockJsService extends Controller with SockJs {
   /*
@@ -20,9 +23,18 @@ object SockJsService extends Controller with SockJs {
    * Iteratee - to iterate over msgs that will be received from the sockjs client
    * Enumerator - to enumerate the msgs that will be sent to the sockjs client
    */
-  def sockJsHandler = SockJs.async { rh: RequestHeader =>
+
+  val SockJsHandler(echoAction, echoWebsocket) = SockJs async { rh =>
     val (downEnumerator, downChannel) = Concurrent.broadcast[JsValue]
     val upIteratee = Iteratee.foreach[JsValue] { msg => downChannel push msg; println(s"handler1 ::::::::::: message: $msg") }
     Promise.pure(upIteratee, downEnumerator)
   }
+
+  val SockJsHandler(closeAction, _) = SockJs async { rh =>
+    val (downEnumerator, downChannel) = Concurrent.broadcast[JsValue]
+    val upIteratee = Iteratee.foreach[JsValue] { msg => downChannel push Input.EOF }
+    Promise.pure(upIteratee, downEnumerator)
+  }
+  
+  //TODO: disabled websocket app
 }
