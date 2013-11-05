@@ -9,7 +9,7 @@ Play2 plugin for SockJS (In Progress)
 1- Clone the repo to your local machine
 
 ```
-git clone https://github.com/ashihaby/play-sockjs.git
+git clone git@github.com:dosht/play-sockjs.git
 ```
 2- Compile and publish the plugin to local play repo
 
