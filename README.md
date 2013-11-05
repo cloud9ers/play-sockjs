@@ -1,35 +1,35 @@
 play-sockjs
 ===========
 
-Play2 plugin for SockJS (Not ready yet for using it)
-* So far, you can add only one sockjs
+Play2 plugin for SockJS (In Progress)
+* You can use it but still requires some work
 
 ## How to use
 
- 1. Clone the repo to your local machine
+1- Clone the repo to your local machine
 
 ```
 git clone https://github.com/ashihaby/play-sockjs.git
 ```
- 2. Compile and publish the plugin to local play repo
+2- Compile and publish the plugin to local play repo
 
 ```
 cd play-sockjs/project-code
 play publish-local
 ```
- 3. Add it to your play project dependencies
+3- Add it to your play project dependencies
 
 ```scala
 val appDependencies = Seq(
   "play-sockjs" % "play-sockjs_2.10" % "1.0-SNAPSHOT"
 )
 ```
-4. Include the pluing in conf/play.plugins
+4- Include the pluing in conf/play.plugins
 
 ```
 10000:com.cloud9ers.play2.sockjs.SockJsPlugin
 ```
-5. Write your controller and inherit from SockJsTrait
+5- Write your controller and inherit from SockJsTrait
 
 ```scala
 package controllers
@@ -49,7 +49,7 @@ object SockJsService extends Controller with SockJs {
   }
 }
 ```
-6. Add routing. Unfortunatly it requires a complex routing scheme :(
+6- Add routing. Unfortunatly it requires a complex routing scheme :(
 
 ```scala
 GET     /echo/:svr/:ses/websocket controllers.SockJsService.echoWebsocket(svr, ses)
@@ -59,7 +59,7 @@ OPTIONS /echo                     controllers.SockJsService.echoAction(route="")
 OPTIONS /echo/$route<.*>          controllers.SockJsService.echoAction(route)
 POST    /echo/$route<.*>          controllers.SockJsService.echoAction(route)
 ```
-7. Finnaly, you need to add the base Url to the configuration in application.con
+7- Finnaly, you need to add the base Url to the configuration in application.con
 ```
 	sockjs.prefix=echo
 ```
