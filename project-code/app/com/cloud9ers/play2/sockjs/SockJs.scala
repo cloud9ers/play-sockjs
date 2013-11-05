@@ -2,14 +2,11 @@ package com.cloud9ers.play2.sockjs
 
 import java.text.SimpleDateFormat
 import java.util.Date
-
 import scala.Option.option2Iterable
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.util.Random
-
 import com.cloud9ers.play2.sockjs.transports.{ EventSourceTransport, JsonPTransport, Transport, WebSocketTransport, XhrTransport }
-
 import akka.actor.{ ActorRef, actorRef2Scala }
 import akka.pattern.ask
 import akka.util.Timeout
@@ -19,8 +16,10 @@ import play.api.libs.iteratee.{ Enumerator, Iteratee }
 import play.api.libs.json.{ JsValue, Json }
 import play.api.libs.json.Json.toJsFieldJsValueWrapper
 import play.api.mvc.{ Action, AnyContent, Controller, Request, RequestHeader, Result }
+import play.api.mvc.WebSocket
 
 case class SessionResult(session: Option[ActorRef], result: Result)
+case class SockJsHandler(action: String => Action[AnyContent], websocket: (String, String) => WebSocket[String])
 
 trait SockJs { self: Controller =>
   type Handler = RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])]
@@ -30,6 +29,7 @@ trait SockJs { self: Controller =>
   def randomNumber() = 2L << 30 + Random.nextInt
   lazy val prefix = SockJsPlugin.current.prefix
   lazy val maxLength: Int = SockJsPlugin.current.maxLength
+  lazy val maxBytesStreaming: Int = SockJsPlugin.current.maxBytesStreaming
   val websocketEnabled: Boolean = SockJsPlugin.current.websocketEnabled
 
   lazy val sessionManager = SockJsPlugin.current.sessionManager
@@ -49,17 +49,24 @@ trait SockJs { self: Controller =>
      * The same as Websocket.async
      * @param f - user function that takes the request header and return Future of the user's Iteratee and Enumerator
      */
-    def async(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])]): play.api.mvc.Action[AnyContent] = Action {
+    def async(handler: Handler) = SockJsHandler((route) => action(handler), (server, session) => websocket(handler))
+
+    /**
+     * Action
+     */
+    def action(handler: RequestHeader => Future[(Iteratee[JsValue, _], Enumerator[JsValue])]): play.api.mvc.Action[AnyContent] = Action {
       implicit request =>
-        request.path match {
-          case greatingRoute() => Ok("Welcome to SockJS!\n").withHeaders(CONTENT_TYPE -> "text/plain;charset=UTF-8")
-          case iframeUrl(_) => handleIframe
-          case infoRoute() => info(websocket = websocketEnabled)
-          case infoDisabledWebsocketRoute() => info(websocket = false)
-          case sessionUrl() =>
-            Async(futureSession(handler).map(handleMessages(_)).map(_.result))
-          case closeSessionUrl(sessionid) =>
-            Async(futureSession(handler).map(handleMessages(_)).map(closeSession(_)).map(_.result))
+        (request.method, request.path) match {
+          case (_, greatingRoute()) => Ok("Welcome to SockJS!\n").withHeaders(CONTENT_TYPE -> "text/plain;charset=UTF-8")
+          case (_, iframeUrl(_)) => handleIframe
+          case (_, infoDisabledWebsocketRoute()) => info(websocket = false)
+          case ("GET", infoRoute()) => info(websocket = websocketEnabled)
+          case ("OPTIONS", infoRoute()) => handleCORSOptions(List("OPTIONS", "GET"))
+          case ("OPTIONS", sessionUrl()) => handleCORSOptions(List("OPTIONS", "POST"))
+          case ("POST" | "GET", sessionUrl()) =>
+            Async(futureSession(handler).map(handleMessages).map(_.result))
+          case (_, closeSessionUrl(sessionid)) =>
+            Async(futureSession(handler).map(handleMessages).map(closeSession).map(_.result))
           case _ => NotFound("Notfound")
         }
     }
@@ -101,7 +108,10 @@ trait SockJs { self: Controller =>
   }
 
   def closeSession(sessionResult: SessionResult)(implicit request: Request[AnyContent]): SessionResult = {
-    for (session <- sessionResult.session) session ! Session.Close(3000, "Go away!")
+    for (session <- sessionResult.session) {
+      logger.debug(s"calling close session: ${session}")
+      session ! Session.Close(3000, "Go away!")
+    }
     sessionResult
   }
 
@@ -116,29 +126,29 @@ trait SockJs { self: Controller =>
           .format(new Date(System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000))))
     }
 
-  def info(websocket: Boolean = true)(implicit request: Request[AnyContent]) = request.method match {
-    case "GET" =>
-      Ok(Json.obj(
-        "websocket" -> websocket,
-        "cookie_needed" -> true,
-        "origins" -> List("*:*"),
-        "entropy" -> randomNumber))
-        .withHeaders(
-          CONTENT_TYPE -> "application/json;charset=UTF-8",
-          CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
-        .withHeaders(cors: _*)
-    case "OPTIONS" =>
-      val oneYearSeconds = 365 * 24 * 60 * 60
-      val oneYearms = oneYearSeconds * 1000
-      val expires = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz")
-        .format(new Date(System.currentTimeMillis() + oneYearms))
-      NoContent
-        .withHeaders(
-          EXPIRES -> expires,
-          CACHE_CONTROL -> "public,max-age=31536000",
-          ACCESS_CONTROL_ALLOW_METHODS -> "OPTIONS, GET",
-          ACCESS_CONTROL_MAX_AGE -> oneYearSeconds.toString)
-        .withHeaders(cors: _*)
+  def info(websocket: Boolean = true)(implicit request: Request[AnyContent]) =
+    Ok(Json.obj(
+      "websocket" -> websocket,
+      "cookie_needed" -> true,
+      "origins" -> List("*:*"),
+      "entropy" -> randomNumber))
+      .withHeaders(
+        CONTENT_TYPE -> "application/json;charset=UTF-8",
+        CACHE_CONTROL -> "no-store, no-cache, must-revalidate, max-age=0")
+      .withHeaders(cors: _*)
+
+  def handleCORSOptions(methods: List[String])(implicit request: Request[AnyContent]) = {
+    val oneYearSeconds = 365 * 24 * 60 * 60
+    val oneYearms = oneYearSeconds * 1000
+    val expires = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz")
+      .format(new Date(System.currentTimeMillis() + oneYearms))
+    NoContent
+      .withHeaders(
+        EXPIRES -> expires,
+        CACHE_CONTROL -> "public,max-age=31536000",
+        ACCESS_CONTROL_ALLOW_METHODS -> methods.reduceLeft(_ + ", " + _),
+        ACCESS_CONTROL_MAX_AGE -> oneYearSeconds.toString)
+      .withHeaders(cors: _*)
   }
 
   def cors(implicit req: Request[AnyContent]) = Seq(

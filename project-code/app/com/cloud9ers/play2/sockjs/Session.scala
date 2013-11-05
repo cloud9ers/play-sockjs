@@ -1,13 +1,13 @@
 package com.cloud9ers.play2.sockjs
 
 import scala.concurrent.Future
-import scala.concurrent.duration.{DurationInt, DurationLong}
+import scala.concurrent.duration.{ DurationInt, DurationLong }
 
-import akka.actor.{Actor, ActorRef, Cancellable, PoisonPill, actorRef2Scala}
+import akka.actor.{ Actor, ActorRef, Cancellable, PoisonPill, actorRef2Scala }
 import akka.event.Logging
-import play.api.libs.iteratee.{Concurrent, Enumerator, Input, Iteratee}
-import play.api.libs.json.{JsArray, JsValue}
-import play.api.mvc.{AnyContent, Request, RequestHeader}
+import play.api.libs.iteratee.{ Concurrent, Enumerator, Input, Iteratee }
+import play.api.libs.json.{ JsArray, JsValue }
+import play.api.mvc.{ AnyContent, Request, RequestHeader }
 
 /**
  * Session class to queue messages over multiple connection like xhr and xhr_send
@@ -18,6 +18,8 @@ class Session(handler: RequestHeader ⇒ Future[(Iteratee[JsValue, _], Enumerato
   var transportListener: Option[ActorRef] = None
   var heartBeatTask: Option[Cancellable] = None
   var timer: Option[Cancellable] = None
+  var openWriten = false
+  var closeMessage = Session.Close(3000, "Go away!")
   //TODO: Max Queue Size
 
   implicit val executionContext = context.system.dispatcher
@@ -35,38 +37,106 @@ class Session(handler: RequestHeader ⇒ Future[(Iteratee[JsValue, _], Enumerato
 
   def receive = connecting orElse timeout
 
+  def connecting: Receive = {
+    case Session.Register ⇒
+      logger.debug(s"state: CONNECTING, sender: $sender, message: ${Session.Register}")
+      (register andThen sendOpenMessage andThen resetListener andThen becomeOpen)(sender)
+
+    case c: Session.Close ⇒
+      logger.debug(s"state: CONNECTING, sender: $sender, message: $c")
+      becomeClosed.apply()
+  }
+
   def timeout: Receive = {
     case Session.Timeout ⇒ doClose()
   }
 
-  def connecting: Receive = {
-    case Session.Register ⇒
-      sender ! Session.OpenMessage
-      context become (open orElse timeout)
-      startHeartBeat()
-  }
-
   def open: Receive = {
-    case Session.Register ⇒ register(sender)
-    case Session.Send(msgs) ⇒ handleMessages(msgs)
-    case Session.Write(msg) ⇒ write(msg)
-    case h @ Session.HeartBeat ⇒ for (tl ← transportListener) tl ! h
-    case c: Session.Close ⇒ close(c)
+    case Session.Register ⇒
+      logger.debug(s"state: OPEN, sender: $sender, message: ${Session.Register}")
+      register(sender)
+      if (!pendingWrites.isEmpty) (writePendingMessages andThen resetListener)(sender)
+
+    case s @ Session.Send(msgs) ⇒
+      logger.debug(s"state: OPEN, sender: $sender, message: $s")
+      handleMessages(msgs)
+
+    case w @ Session.Write(msg) ⇒
+      logger.debug(s"state: OPEN, sender: $sender, message: $w")
+      enqueue(msg)
+      transportListener map (writePendingMessages andThen resetListener)
+
+    case Session.HeartBeat ⇒
+      logger.debug(s"state: OPEN, sender: $sender, message: ${Session.HeartBeat}")
+      transportListener map (sendHeartBeatMessage andThen resetListener)
+
+    case c: Session.Close ⇒
+      logger.debug(s"state: OPEN, sender: $sender, message: $c")
+      this.closeMessage = c
+      transportListener map (sendCloseMessage andThen resetListener andThen becomeClosed) getOrElse becomeClosed
   }
 
   def closed: Receive = {
-    case Session.Register ⇒ sender ! Session.Close(3000, "Go away!")
+    case Session.Register if !openWriten ⇒
+      logger.debug(s"state: OPEN, sender: $sender, message: ${Session.Register}, openWriten: $openWriten")
+      (register andThen sendOpenMessage andThen resetListener)(sender)
+
+    case Session.Register ⇒
+      logger.debug(s"state: OPEN, sender: $sender, message: ${Session.Register}, openWriten: $openWriten")
+      (register andThen sendCloseMessage andThen resetListener)(sender)
   }
 
-  def register(transport: ActorRef) {
-    if (transportListener.isEmpty || transportListener.get == sender) {
-      setTimer()
-      transportListener = Some(sender)
-      if (!pendingWrites.isEmpty) writePendingMessages(sender)
+  val register = (tl: ActorRef) ⇒ {
+    if (transportListener.isEmpty || transportListener.get == tl) {
+      transportListener = Some(tl)
     } else {
-      sender ! Session.Close(2010, "Another connection still open")
+      tl ! Session.Close(2010, "Another connection still open")
       logger.debug(s"Refuse transport, Another connection still open")
     }
+    tl
+  }: ActorRef
+
+  val sendOpenMessage = (tl: ActorRef) ⇒ {
+    tl ! Session.OpenMessage
+    openWriten = true
+    tl
+  }: ActorRef
+
+  val resetListener = (tl: ActorRef) ⇒ {
+    //TODO: should you notify the tl?
+    transportListener = None
+    setTimer()
+  }: Unit
+
+  val becomeOpen = (_: Unit) ⇒ {
+    context become (open orElse timeout)
+    startHeartBeat()
+  }: Unit
+
+  val becomeClosed = (_: Unit) ⇒ {
+    context become (closed orElse timeout)
+    upChannel.eofAndEnd()
+  }: Unit
+
+  val writePendingMessages = (tl: ActorRef) ⇒ { //TODO: unify writes
+    logger.debug(s"writePendingMessages: tl: $tl, pendingWrites: $pendingWrites")
+    tl ! Session.Message("a" + JsonCodec.encodeJson(JsArray(pendingWrites.dequeueAll(_ ⇒ true).toList)))
+    tl
+  }: ActorRef
+
+  val sendCloseMessage = (tl: ActorRef) ⇒ {
+    tl ! closeMessage; tl
+  }: ActorRef
+
+  val sendHeartBeatMessage = (tl: ActorRef) ⇒ {
+    tl ! Session.HeartBeat
+    tl
+  }: ActorRef
+
+  def enqueue(msg: JsValue) {
+    //TODO: check the queue size
+    logger.debug(s"enqueue msg: $msg, pendingWrites: $pendingWrites")
+    pendingWrites += msg
   }
 
   def handleMessages(msgs: JsValue) {
@@ -74,30 +144,6 @@ class Session(handler: RequestHeader ⇒ Future[(Iteratee[JsValue, _], Enumerato
       case msg: JsArray ⇒ msg.value.foreach(m ⇒ upChannel push m)
       case msg: JsValue ⇒ upChannel push msg
     }
-  }
-
-  def write(msg: JsValue) {
-    pendingWrites += msg
-    for (tl ← transportListener) writePendingMessages(tl)
-  }
-
-  def writePendingMessages(tl: ActorRef) {
-    val ms = pendingWrites.dequeueAll(_ ⇒ true).toList
-    tl ! Session.Message("a" + JsonCodec.encodeJson(JsArray(ms)))
-    resetListener()
-    logger.debug(s"writePendingMessages: tl: $tl, pendingWrites: pendingWrites")
-  }
-
-  def close(closeMsg: Session.Close) {
-    logger.debug(s"Session is closing, code: ${closeMsg.code}, reason: ${closeMsg.reason}")
-    context become (closed orElse timeout)
-    upChannel push Input.EOF
-    for (tl ← transportListener) tl ! closeMsg
-  }
-
-  def resetListener() {
-    transportListener = None
-    setTimer()
   }
 
   def setTimer() {
@@ -123,6 +169,7 @@ class Session(handler: RequestHeader ⇒ Future[(Iteratee[JsValue, _], Enumerato
 object Session {
   case class Send(msg: JsValue) // JSClient send
   case object Register // register the transport actor and holds for the next message to write to the JSClient
+  case object Unregister
   case object OpenMessage
   case class Message(msg: String)
   case class Close(code: Int, reason: String)

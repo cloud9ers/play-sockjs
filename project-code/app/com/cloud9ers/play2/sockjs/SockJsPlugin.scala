@@ -13,7 +13,7 @@ class SockJsPlugin(app: Application) extends Plugin {
   lazy val logger = Logger("SockJsPlugin")
   lazy val prefix: String = app.configuration.getString("sockjs.prefix").getOrElse("/")
   lazy val maxLength: Int = app.configuration.getInt("sockjs.maxLength").getOrElse(1024 * 100)
-  lazy val maxBytesStreaming: Int = app.configuration.getInt("sockjs.maxBytesStreaming").getOrElse(4100)
+  lazy val maxBytesStreaming: Int = app.configuration.getInt("sockjs.maxBytesStreaming").getOrElse(4096)
   lazy val websocketEnabled: Boolean = app.configuration.getBoolean("sockjs.websocketEnabled").getOrElse(true)
   lazy val clientUrl: String = app.configuration.getString("sockjs.clientUrl")
     .getOrElse("http://cdn.sockjs.org/sockjs-0.3.4.min.js")
