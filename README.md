@@ -52,12 +52,12 @@ object SockJsService extends Controller with SockJs {
 6. Add routing. Unfortunatly it requires a complex routing scheme :(
 
 ```scala
-GET     /echo/:server/:session/websocket controllers.SockJsService.echoWebsocket(server, session)
-GET     /echo                            controllers.SockJsService.echoAction(route="")
-GET     /echo/$route<.*>                 controllers.SockJsService.echoAction(route)
-OPTIONS /echo                            controllers.SockJsService.echoAction(route="")
-OPTIONS /echo/$route<.*>                 controllers.SockJsService.echoAction(route)
-POST    /echo/$route<.*>                 controllers.SockJsService.echoAction(route)
+GET     /echo/:svr/:ses/websocket controllers.SockJsService.echoWebsocket(svr, ses)
+GET     /echo                     controllers.SockJsService.echoAction(route="")
+GET     /echo/$route<.*>          controllers.SockJsService.echoAction(route)
+OPTIONS /echo                     controllers.SockJsService.echoAction(route="")
+OPTIONS /echo/$route<.*>          controllers.SockJsService.echoAction(route)
+POST    /echo/$route<.*>          controllers.SockJsService.echoAction(route)
 ```
 7. Finnaly, you need to add the base Url to the configuration in application.con
 ```
